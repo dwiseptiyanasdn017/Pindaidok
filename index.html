@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PindaiDok</title>
+<meta name="description" content="Scan dokumen ke PDF/PNG ukuran A4, tanpa iklan, semua diproses di perangkat.">
+<meta name="theme-color" content="#1d5fa8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+/* Layout: bilah atas tipis, grid halaman, bilah aksi menempel di bawah; editor layar penuh gelap */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --ink:#15202b; --muted:#5a6876; --line:#d5dbe2;
+  --accent:#1d5fa8; --accent-ink:#ffffff; --accent-soft:#e3edf8; --danger:#b42318;
+  --stage:#0c1015; --stage-ink:#e8edf2;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+  --mono:ui-monospace,"SF Mono","Roboto Mono",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1419; --surface:#18202a; --ink:#e6ebf0; --muted:#94a2b1; --line:#2b3644;
+  --accent:#5d9ce2; --accent-ink:#0b1420; --accent-soft:#1b2a3c; --danger:#f97066; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--font);-webkit-tap-highlight-color:transparent;
+  padding-top:env(safe-area-inset-top,0px)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+svg.i{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);display:flex;align-items:center;gap:12px;
+  padding:12px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
+.top h1{margin:0;font-size:18px;letter-spacing:.2px}
+.top .count{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.top .sp{flex:1}
+.link-btn{background:none;border:0;color:var(--muted);font-size:13px;padding:6px 4px}
+.link-btn.warn{color:var(--danger);font-weight:600}
+
+main{padding:14px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(safe-area-inset-left,0px))}
+.name-row{display:flex;flex-direction:column;gap:4px;margin-bottom:14px}
+.name-row label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.name-row input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit}
+
+.empty{border:1.5px dashed var(--line);border-radius:12px;padding:28px 18px;text-align:center;color:var(--muted);background:var(--surface)}
+.empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:6px}
+.empty ol{text-align:left;max-width:330px;margin:12px auto 0;padding-left:20px}
+
+.grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.card .thumb{position:relative;aspect-ratio:210/297;background:#fff;border:0;padding:0;display:block;width:100%}
+.card .thumb img{width:100%;height:100%;object-fit:contain;display:block}
+.card .no{position:absolute;left:6px;top:6px;background:var(--ink);color:var(--bg);font:600 12px/1 var(--mono);padding:4px 6px;border-radius:4px}
+.card .tools{display:flex;border-top:1px solid var(--line)}
+.card .tools button{flex:1;background:none;border:0;padding:9px 0;display:flex;justify-content:center;color:var(--muted)}
+.card .tools button:disabled{opacity:.3}
+.card .tools button.armed{color:#fff;background:var(--danger)}
+
+.actions{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);display:flex;gap:10px;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;border:1px solid var(--line);background:var(--surface);
+  padding:12px 14px;font-weight:600;min-height:48px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.45;cursor:default}
+.actions .btn{flex:1}
+
+/* Editor */
+.editor{position:fixed;inset:0;z-index:20;background:var(--stage);color:var(--stage-ink);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.ed-head{display:flex;align-items:center;gap:10px;padding:10px max(14px,env(safe-area-inset-right,0px)) 10px max(14px,env(safe-area-inset-left,0px))}
+.ed-head .title{flex:1;font-weight:600}
+.ed-head .stepinfo{font-size:12px;opacity:.7}
+.ghost.rot{display:inline-flex;align-items:center;gap:6px}
+.ghost{background:none;border:1px solid #3a4553;color:var(--stage-ink);border-radius:8px;padding:8px 12px}
+.stage{flex:1;position:relative;min-height:0;touch-action:none}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%}
+.hint{position:absolute;left:0;right:0;bottom:8px;text-align:center;font-size:12px;opacity:.75;pointer-events:none}
+.ed-tools{display:flex;gap:8px;overflow-x:auto;padding:10px max(14px,env(safe-area-inset-right,0px)) 4px max(14px,env(safe-area-inset-left,0px))}
+.chip{flex:none;border:1px solid #3a4553;background:#18202a;color:var(--stage-ink);border-radius:999px;padding:8px 14px;display:inline-flex;align-items:center;gap:6px;font-size:14px}
+.chip[aria-pressed="true"]{background:#e8edf2;color:#0c1015;border-color:#e8edf2;font-weight:600}
+.ed-foot{display:flex;gap:10px;padding:10px max(14px,env(safe-area-inset-right,0px)) 12px max(14px,env(safe-area-inset-left,0px))}
+.ed-foot .btn{flex:1;background:#18202a;border-color:#3a4553;color:var(--stage-ink)}
+.ed-foot .btn.primary{background:#5d9ce2;border-color:#5d9ce2;color:#0b1420}
+
+/* Sheet ekspor */
+.scrim{position:fixed;inset:0;z-index:30;background:rgba(5,10,15,.5);display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:520px;border-radius:16px 16px 0 0;display:flex;flex-direction:column;gap:16px;
+  padding:18px max(18px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px))}
+.sheet h2{margin:0;font-size:17px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field>span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;background:var(--surface);border:0;padding:10px 4px;font-size:14px;border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.seg small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+.check{display:flex;align-items:center;gap:10px;font-size:14px}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.sheet .row{display:flex;gap:10px}
+.sheet .row .btn{flex:1}
+.seg .sz{font:600 12px/1.3 var(--mono);color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums}
+.seg button[aria-pressed="true"] .sz{color:var(--accent)}
+.size-box{margin:0;padding:10px 12px;border-radius:10px;background:var(--bg);font-size:14px}
+.size-box b{font:700 16px var(--mono);font-variant-numeric:tabular-nums}
+.size-box span{font-size:12px;color:var(--muted)}
+
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--bg);
+  padding:10px 14px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px);box-shadow:0 4px 18px rgba(0,0,0,.25)}
+.busy{position:fixed;inset:0;z-index:60;background:rgba(5,10,15,.62);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;text-align:center;padding:24px}
+.spin{width:38px;height:38px;border-radius:50%;border:4px solid rgba(255,255,255,.25);border-top-color:#fff;animation:sp 0.9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>PindaiDok</h1>
+  <span class="count" id="count">0 halaman</span>
+  <span class="sp"></span>
+  <button class="link-btn" id="btnClear" hidden>Hapus semua</button>
+</header>
+
+<main>
+  <div class="name-row">
+    <label for="fname">Nama file</label>
+    <input id="fname" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="empty" id="empty">
+    <b>Belum ada halaman</b>
+    Foto dokumen dengan tombol <strong>Kamera</strong>, atau ambil dari <strong>Galeri</strong>.
+    <ol>
+      <li>Letakkan kertas di alas yang lebih gelap dari kertas.</li>
+      <li>Tepi kertas dideteksi otomatis, bisa digeser manual.</li>
+      <li>Pilih filter, lalu ekspor ke PDF A4 atau gambar.</li>
+    </ol>
+  </div>
+  <ol class="grid" id="grid"></ol>
+</main>
+
+<nav class="actions">
+  <button class="btn primary" id="btnCam"><svg class="i" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Kamera</button>
+  <button class="btn" id="btnGal"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/></svg>Galeri</button>
+  <button class="btn" id="btnExport" disabled><svg class="i" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Ekspor</button>
+</nav>
+
+<input type="file" id="inCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="inGal" accept="image/*" multiple hidden>
+
+<!-- Editor -->
+<section class="editor" id="editor" hidden aria-label="Edit halaman">
+  <div class="ed-head">
+    <button class="ghost" id="edCancel">Batal</button>
+    <div class="title" id="edTitle">Halaman</div>
+    <div class="stepinfo" id="edStep">1/2 Potong</div>
+    <button class="ghost rot" id="edRot" hidden><svg class="i" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 1-2.3-5.7L20 8M20 3v5h-5"/></svg>Putar</button>
+  </div>
+  <div class="stage" id="stage"><canvas id="cv"></canvas><div class="hint" id="edHint">Geser titik sudut ke tepi kertas</div></div>
+  <div class="ed-tools" id="toolsCrop">
+    <button class="chip" id="edDetect"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>Deteksi otomatis</button>
+    <button class="chip" id="edFull"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/></svg>Seluruh foto</button>
+  </div>
+  <div class="ed-tools" id="toolsFilter" hidden>
+    <button class="chip" data-f="tajam">Tajam</button>
+    <button class="chip" data-f="abu">Abu-abu</button>
+    <button class="chip" data-f="hp">Hitam-putih</button>
+    <button class="chip" data-f="asli">Asli</button>
+  </div>
+  <div class="ed-foot">
+    <button class="btn" id="edBack" hidden>Kembali</button>
+    <button class="btn" id="edSaveMore" hidden>Simpan + foto lagi</button>
+    <button class="btn primary" id="edNext">Lanjut</button>
+  </div>
+</section>
+
+<!-- Ekspor -->
+<div class="scrim" id="exportSheet" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="exTitle">
+    <h2 id="exTitle">Ekspor <span id="exCount"></span></h2>
+    <div class="field"><span>Format</span>
+      <div class="seg" id="segFmt">
+        <button data-v="pdf">PDF<small>1 file A4</small></button>
+        <button data-v="png">PNG<small>per halaman</small></button>
+        <button data-v="jpg">JPG<small>per halaman</small></button>
+      </div>
+    </div>
+    <div class="field"><span>Ukuran file</span>
+      <div class="seg" id="segQ">
+        <button data-v="kecil">Kecil<small>kirim WA</small><small class="sz">…</small></button>
+        <button data-v="sedang">Sedang<small>umum</small><small class="sz">…</small></button>
+        <button data-v="tinggi">Tinggi<small>cetak</small><small class="sz">…</small></button>
+      </div>
+    </div>
+    <label class="check" id="marginRow"><input type="checkbox" id="exMargin"> Beri margin 1 cm di tepi halaman A4</label>
+    <p class="size-box" id="exSize" aria-live="polite">Menghitung ukuran file…</p>
+    <div class="row">
+      <button class="btn" id="exCancel">Tutup</button>
+      <button class="btn" id="exShare" hidden>Bagikan</button>
+      <button class="btn primary" id="exSave">Unduh</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<div class="busy" id="busy" hidden><div class="spin"></div><div id="busyText">Memproses…</div></div>
+
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script>
+'use strict';
+/* ====== Konstanta ====== */
+const MAX_ORIG = 2400;     // sisi terpanjang foto asli yang disimpan (≈ A4 200 dpi)
+const MAX_PREVIEW = 1100;  // pratinjau filter
+const QUALITY = {
+  kecil:  {side:1240, q:0.62},
+  sedang: {side:1754, q:0.78},
+  tinggi: {side:2400, q:0.9}
+};
+const FILTER_NAMES = {tajam:'Tajam', abu:'Abu-abu', hp:'Hitam-putih', asli:'Asli'};
+const $ = id => document.getElementById(id);
+
+/* ====== Penyimpanan lokal (IndexedDB + localStorage) ====== */
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem('pd_'+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('pd_'+k, JSON.stringify(v)); }catch(e){} }
+};
+const DB = {
+  db:null,
+  open(){ return new Promise((res)=>{ try{
+      const r = indexedDB.open('pindaidok', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('pages', {keyPath:'id'});
+      r.onsuccess = () => { this.db = r.result; res(true); };
+      r.onerror = () => res(false);
+    }catch(e){ res(false); } }); },
+  tx(mode){ return this.db.transaction('pages', mode).objectStore('pages'); },
+  req(r){ return new Promise((res,rej)=>{ r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); },
+  async put(p){ if(!this.db) return; const {id,orig,out,w,h,corners,rot,filter} = p; try{ await this.req(this.tx('readwrite').put({id,orig,out,w,h,corners,rot,filter})); }catch(e){ console.warn(e); } },
+  async del(id){ if(!this.db) return; try{ await this.req(this.tx('readwrite').delete(id)); }catch(e){} },
+  async clear(){ if(!this.db) return; try{ await this.req(this.tx('readwrite').clear()); }catch(e){} },
+  async all(){ if(!this.db) return []; try{ return await this.req(this.tx('readonly').getAll()); }catch(e){ return []; } }
+};
+
+/* ====== State ====== */
+let pages = [];               // {id, orig, out, w, h, corners, rot, filter, url}
+let defFilter = LS.get('filter', 'tajam');
+let exportOpt = LS.get('export', {fmt:'pdf', q:'sedang', margin:false});
+
+/* ====== Util ====== */
+function toast(msg, ms=2600){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true, ms); }
+function busy(on, text){ $('busy').hidden=!on; if(text) $('busyText').textContent=text; }
+const tick = () => new Promise(r=>setTimeout(r, 30));
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function canvas(w,h){ const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(w)); c.height=Math.max(1,Math.round(h)); return c; }
+function toBlob(c, type, q){ return new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('Gagal membuat gambar')), type, q)); }
+async function loadBitmap(blob){
+  if (window.createImageBitmap){ try{ return await createImageBitmap(blob, {imageOrientation:'from-image'}); }catch(e){} }
+  return await new Promise((res,rej)=>{ const u=URL.createObjectURL(blob), im=new Image();
+    im.onload=()=>{ URL.revokeObjectURL(u); res(im); }; im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error('Gambar tidak bisa dibuka')); }; im.src=u; });
+}
+function closeBmp(b){ if(b && b.close) b.close(); }
+function fmtSize(n){ return n>1048576 ? (n/1048576).toFixed(1).replace('.',',')+' MB' : Math.max(1,Math.round(n/1024))+' KB'; }
+function safeName(s){ return (s||'Scan').trim().replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').slice(0,80) || 'Scan'; }
+function today(){ const d=new Date(), p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+
+/* ====== OpenCV (deteksi tepi) — dimuat saat pertama dibutuhkan ====== */
+let CV = null, cvPromise = null;
+function loadCV(){
+  if (CV) return Promise.resolve(CV);
+  if (cvPromise) return cvPromise;
+  cvPromise = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/opencv.js'; s.async = true;
+    s.onload = async () => {
+      try{
+        let c = window.cv;
+        if (c && !c.Mat && typeof c.then === 'function'){
+          c = await Promise.race([ new Promise(r => c.then(m => { if (m && m.then) { try{ delete m.then; }catch(e){} } r(m); })),
+                                   new Promise((_,j)=>setTimeout(()=>j(new Error('timeout')), 30000)) ]);
+        }
+        if (c && !c.Mat){ await new Promise(r => { c.onRuntimeInitialized = r; }); }
+        CV = c; window.cv = c; res(c);
+      }catch(e){ rej(e); }
+    };
+    s.onerror = () => rej(new Error('Pendeteksi tepi tidak bisa dimuat'));
+    document.head.appendChild(s);
+  });
+  cvPromise.catch(() => { cvPromise = null; });
+  return cvPromise;
+}
+async function ensureCV(){
+  if (CV) return CV;
+  busy(true, 'Memuat pendeteksi tepi…\n(hanya lama saat pertama kali)');
+  try{ return await loadCV(); }catch(e){ toast('Deteksi otomatis tidak tersedia. Atur sudut secara manual.'); return null; }
+  finally{ busy(false); }
+}
+
+function orderCorners(pts){
+  const cx = pts.reduce((s,p)=>s+p.x,0)/4, cy = pts.reduce((s,p)=>s+p.y,0)/4;
+  const s = pts.slice().sort((a,b)=>Math.atan2(a.y-cy,a.x-cx)-Math.atan2(b.y-cy,b.x-cx)); // tl,tr,br,bl (koordinat layar)
+  let k=0, best=Infinity; s.forEach((p,i)=>{ if(p.x+p.y<best){best=p.x+p.y;k=i;} });
+  return [0,1,2,3].map(i=>s[(i+k)%4]);
+}
+function fullCorners(w,h){ return [{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}]; }
+
+/* src: canvas atau bitmap berukuran w×h. Mengembalikan 4 sudut (koordinat w×h) atau null. */
+function detectCorners(src, w, h){
+  if (!CV) return null;
+  const cv = CV;
+  const sc = Math.min(1, 500/Math.max(w,h));
+  const sw = Math.round(w*sc), sh = Math.round(h*sc);
+  const c = canvas(sw, sh), x = c.getContext('2d', {willReadFrequently:true});
+  x.drawImage(src, 0, 0, sw, sh);
+  const mats = [];
+  const M = m => (mats.push(m), m);
+  try{
+    const img = M(cv.matFromImageData(x.getImageData(0,0,sw,sh)));
+    const gray = M(new cv.Mat()); cv.cvtColor(img, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, gray, new cv.Size(5,5), 0);
+    const minArea = 0.15*sw*sh;
+    const tryEdges = (edges) => {
+      const k = M(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3)));
+      cv.dilate(edges, edges, k);
+      const cs = M(new cv.MatVector()), hi = M(new cv.Mat());
+      cv.findContours(edges, cs, hi, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+      let best = null, bestA = 0, big = null, bigA = 0;
+      for (let i=0;i<cs.size();i++){
+        const ct = cs.get(i); const a = cv.contourArea(ct);
+        if (a < minArea){ ct.delete(); continue; }
+        const peri = cv.arcLength(ct, true), ap = new cv.Mat();
+        cv.approxPolyDP(ct, ap, 0.02*peri, true);
+        if (ap.rows===4 && cv.isContourConvex(ap) && a>bestA){ bestA=a; best=Array.from(ap.data32S); }
+        ap.delete();
+        if (a>bigA){ if(big) big.delete(); big=ct; bigA=a; } else ct.delete();
+      }
+      if (!best && big){ // cadangan: lambung cembung kontur terbesar, disederhanakan sampai 4 titik
+        const hull = new cv.Mat(); cv.convexHull(big, hull, false, true);
+        const per = cv.arcLength(hull, true);
+        for (let e=0.02; e<=0.12 && !best; e+=0.01){
+          const ap = new cv.Mat(); cv.approxPolyDP(hull, ap, e*per, true);
+          if (ap.rows===4) best = Array.from(ap.data32S);
+          ap.delete();
+        }
+        hull.delete();
+      }
+      if (big) big.delete();
+      return best;
+    };
+    let pts = null;
+    const e1 = M(new cv.Mat()); cv.Canny(gray, e1, 50, 150); pts = tryEdges(e1);
+    if (!pts){ const e2 = M(new cv.Mat()); cv.threshold(gray, e2, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU); pts = tryEdges(e2); }
+    if (!pts) return null;
+    const out = [];
+    for (let i=0;i<4;i++) out.push({x:Math.min(w,Math.max(0,pts[i*2]/sc)), y:Math.min(h,Math.max(0,pts[i*2+1]/sc))});
+    return orderCorners(out);
+  }catch(e){ console.warn('deteksi gagal', e); return null; }
+  finally{ mats.forEach(m=>{ try{ m.delete(); }catch(e){} }); }
+}
+
+/* ====== Koreksi perspektif (homografi) ====== */
+function solve(A, b){ // eliminasi Gauss, 8×8
+  const n=b.length;
+  for (let i=0;i<n;i++){
+    let p=i; for (let r=i+1;r<n;r++) if (Math.abs(A[r][i])>Math.abs(A[p][i])) p=r;
+    [A[i],A[p]]=[A[p],A[i]]; [b[i],b[p]]=[b[p],b[i]];
+    for (let r=i+1;r<n;r++){ const f=A[r][i]/A[i][i]; for (let c=i;c<n;c++) A[r][c]-=f*A[i][c]; b[r]-=f*b[i]; }
+  }
+  const x=new Array(n).fill(0);
+  for (let i=n-1;i>=0;i--){ let s=b[i]; for (let c=i+1;c<n;c++) s-=A[i][c]*x[c]; x[i]=s/A[i][i]; }
+  return x;
+}
+function homography(dst, src){ // memetakan titik dst → src
+  const A=[], b=[];
+  for (let i=0;i<4;i++){
+    const {x,y}=dst[i], {x:u,y:v}=src[i];
+    A.push([x,y,1,0,0,0,-x*u,-y*u]); b.push(u);
+    A.push([0,0,0,x,y,1,-x*v,-y*v]); b.push(v);
+  }
+  return solve(A,b);
+}
+const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+function outSize(c, maxSide){
+  let W = Math.max(dist(c[0],c[1]), dist(c[3],c[2])), H = Math.max(dist(c[0],c[3]), dist(c[1],c[2]));
+  const s = Math.min(1, maxSide/Math.max(W,H)); return [Math.max(8,Math.round(W*s)), Math.max(8,Math.round(H*s))];
+}
+/* srcData: ImageData sumber; corners: koordinat srcData */
+function warp(srcData, corners, maxSide){
+  const [W,H] = outSize(corners, maxSide);
+  const [a,b,c,d,e,f,g,h] = homography([{x:0,y:0},{x:W,y:0},{x:W,y:H},{x:0,y:H}], corners);
+  const out = new ImageData(W,H), o = out.data, s = srcData.data, sw = srcData.width, sh = srcData.height;
+  let k=0;
+  for (let y=0;y<H;y++){
+    const yy=y+0.5;
+    for (let x=0;x<W;x++){
+      const xx=x+0.5, den=g*xx+h*yy+1;
+      let u=(a*xx+b*yy+c)/den-0.5, v=(d*xx+e*yy+f)/den-0.5;
+      if (u<0) u=0; else if (u>sw-1.001) u=sw-1.001;
+      if (v<0) v=0; else if (v>sh-1.001) v=sh-1.001;
+      const x0=u|0, y0=v|0, fx=u-x0, fy=v-y0, i00=(y0*sw+x0)*4, i10=i00+4, i01=i00+sw*4, i11=i01+4;
+      const w00=(1-fx)*(1-fy), w10=fx*(1-fy), w01=(1-fx)*fy, w11=fx*fy;
+      o[k]  =s[i00]*w00+s[i10]*w10+s[i01]*w01+s[i11]*w11;
+      o[k+1]=s[i00+1]*w00+s[i10+1]*w10+s[i01+1]*w01+s[i11+1]*w11;
+      o[k+2]=s[i00+2]*w00+s[i10+2]*w10+s[i01+2]*w01+s[i11+2]*w11;
+      o[k+3]=255; k+=4;
+    }
+  }
+  return out;
+}
+
+/* ====== Filter dokumen ====== */
+/* Perkiraan warna kertas (latar) per blok: nilai maksimum blok lalu dihaluskan. Membuang bayangan & cahaya tidak rata. */
+function backgroundMap(L, W, H){
+  const s = Math.max(8, Math.round(Math.min(W,H)/36)), gw=Math.ceil(W/s), gh=Math.ceil(H/s);
+  let g = new Float32Array(gw*gh);
+  for (let y=0;y<H;y++){ const gy=((y/s)|0)*gw; for (let x=0;x<W;x++){ const i=gy+((x/s)|0), v=L[y*W+x]; if (v>g[i]) g[i]=v; } }
+  for (let pass=0;pass<2;pass++){
+    const t=new Float32Array(gw*gh);
+    for (let y=0;y<gh;y++) for (let x=0;x<gw;x++){
+      let sum=0,n=0;
+      for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++){ const yy=y+dy, xx=x+dx; if(yy>=0&&yy<gh&&xx>=0&&xx<gw){ sum+=g[yy*gw+xx]; n++; } }
+      t[y*gw+x]=sum/n;
+    }
+    g=t;
+  }
+  return {g, gw, gh, s};
+}
+function bgAt(bm, x, y){
+  let gx=(x+0.5)/bm.s-0.5, gy=(y+0.5)/bm.s-0.5;
+  if (gx<0) gx=0; if (gy<0) gy=0; if (gx>bm.gw-1) gx=bm.gw-1; if (gy>bm.gh-1) gy=bm.gh-1;
+  const x0=gx|0, y0=gy|0, x1=Math.min(x0+1,bm.gw-1), y1=Math.min(y0+1,bm.gh-1), fx=gx-x0, fy=gy-y0, g=bm.g;
+  const v=(g[y0*bm.gw+x0]*(1-fx)+g[y0*bm.gw+x1]*fx)*(1-fy)+(g[y1*bm.gw+x0]*(1-fx)+g[y1*bm.gw+x1]*fx)*fy;
+  return v<60?60:v;
+}
+function applyFilter(img, f){
+  if (f==='asli') return img;
+  const W=img.width, H=img.height, d=img.data, N=W*H, L=new Float32Array(N);
+  for (let i=0,k=0;i<N;i++,k+=4) L[i]=0.299*d[k]+0.587*d[k+1]+0.114*d[k+2];
+  const bm=backgroundMap(L,W,H);
+  // Penyeimbang putih: rata-rata warna piksel kertas dibuat netral (menghilangkan rona kuning/biru)
+  let gr=1, gg0=1, gb=1;
+  if (f==='tajam'){
+    let sr=0,sg=0,sb=0,n=0;
+    for (let y=0;y<H;y+=4) for (let x=0;x<W;x+=4){ const i=y*W+x, k=i*4; if (L[i]>0.85*bgAt(bm,x,y)){ sr+=d[k]; sg+=d[k+1]; sb+=d[k+2]; n++; } }
+    if (n>50){ sr/=n; sg/=n; sb/=n; const m=(sr+sg+sb)/3; gr=m/sr; gg0=m/sg; gb=m/sb; }
+  }
+  const LO=48, SC=255/(255-LO);
+  const curve = v => { v=(v-LO)*SC; return v<0?0:v>255?255:v; };
+  for (let y=0,i=0;y<H;y++){
+    for (let x=0;x<W;x++,i++){
+      const k=i*4, m=255/bgAt(bm,x,y);
+      if (f==='tajam'){
+        let r=curve(d[k]*gr*m), gg=curve(d[k+1]*gg0*m), b=curve(d[k+2]*gb*m);
+        const l=0.299*r+0.587*gg+0.114*b, S=1.25;
+        r=l+(r-l)*S; gg=l+(gg-l)*S; b=l+(b-l)*S;
+        d[k]=r<0?0:r>255?255:r; d[k+1]=gg<0?0:gg>255?255:gg; d[k+2]=b<0?0:b>255?255:b;
+      } else {
+        const v=curve(L[i]*m);
+        const o = f==='hp' ? (v<190?0:255) : v;
+        d[k]=d[k+1]=d[k+2]=o;
+      }
+    }
+  }
+  return img;
+}
+function rotateCanvas(src, rot){
+  rot=((rot%4)+4)%4; if (!rot) return src;
+  const sw=src.width, sh=src.height, c=rot%2?canvas(sh,sw):canvas(sw,sh), x=c.getContext('2d');
+  x.translate(c.width/2, c.height/2); x.rotate(rot*Math.PI/2); x.drawImage(src, -sw/2, -sh/2);
+  return c;
+}
+function imageDataToCanvas(id){ const c=canvas(id.width,id.height); c.getContext('2d').putImageData(id,0,0); return c; }
+
+/* Proses lengkap: sumber (ImageData) → potong → filter → putar → canvas */
+function processToCanvas(srcData, corners, filter, rot, maxSide){
+  const warped = warp(srcData, corners, maxSide);
+  applyFilter(warped, filter);
+  return rotateCanvas(imageDataToCanvas(warped), rot);
+}
+function getImageData(src, w, h){ const c=canvas(w,h), x=c.getContext('2d',{willReadFrequently:true}); x.drawImage(src,0,0,w,h); return x.getImageData(0,0,w,h); }
+
+/* ====== Impor foto ====== */
+async function importFile(file){
+  const bmp = await loadBitmap(file);
+  const bw = bmp.width||bmp.naturalWidth, bh = bmp.height||bmp.naturalHeight;
+  const sc = Math.min(1, MAX_ORIG/Math.max(bw,bh));
+  const w = Math.round(bw*sc), h = Math.round(bh*sc);
+  const c = canvas(w,h); c.getContext('2d').drawImage(bmp,0,0,w,h); closeBmp(bmp);
+  const orig = await toBlob(c, 'image/jpeg', 0.92);
+  const corners = detectCorners(c, w, h) || fullCorners(w,h);
+  return {page:{id:uid(), orig, out:null, w, h, corners, rot:0, filter:defFilter}, canvas:c};
+}
+async function finalizePage(p, srcCanvas){
+  const data = getImageData(srcCanvas, p.w, p.h);
+  const out = processToCanvas(data, p.corners, p.filter, p.rot, MAX_ORIG);
+  p.out = await toBlob(out, 'image/jpeg', 0.9);
+  return p;
+}
+
+async function handleFiles(files, fromCamera){
+  files = Array.from(files||[]).filter(f=>f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic)$/i.test(f.name));
+  if (!files.length) return;
+  await ensureCV();
+  if (files.length===1){
+    busy(true,'Membuka foto…'); await tick();
+    try{
+      const {page, canvas:c} = await importFile(files[0]);
+      busy(false);
+      openEditor(page, {isNew:true, fromCamera, srcCanvas:c});
+    }catch(e){ busy(false); toast('Foto tidak bisa dibuka: '+e.message); }
+    return;
+  }
+  let ok=0;
+  for (let i=0;i<files.length;i++){
+    busy(true, `Memproses ${i+1} dari ${files.length}…`); await tick();
+    try{
+      const {page, canvas:c} = await importFile(files[i]);
+      await finalizePage(page, c);
+      await addPage(page); ok++;
+    }catch(e){ console.warn(e); }
+  }
+  busy(false);
+  toast(ok===files.length ? `${ok} halaman ditambahkan. Ketuk halaman untuk merapikan.` : `${ok} dari ${files.length} foto berhasil ditambahkan.`);
+}
+
+/* ====== Daftar halaman ====== */
+function saveOrder(){ LS.set('order', pages.map(p=>p.id)); }
+async function addPage(p){ pages.push(p); await DB.put(p); saveOrder(); render(); }
+async function updatePage(p){ if (p.url){ URL.revokeObjectURL(p.url); p.url=null; } await DB.put(p); render(); }
+
+const ICON = {
+  left:'<svg class="i" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
+  right:'<svg class="i" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  edit:'<svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  del:'<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>'
+};
+function render(){
+  const g=$('grid'); g.innerHTML='';
+  pages.forEach((p,i)=>{
+    if (!p.url && p.out) p.url=URL.createObjectURL(p.out);
+    const li=document.createElement('li'); li.className='card';
+    li.innerHTML=`<button class="thumb" aria-label="Edit halaman ${i+1}"><img alt="" src="${p.url}"><span class="no">${i+1}</span></button>
+      <div class="tools">
+        <button data-a="l" aria-label="Geser ke kiri" ${i===0?'disabled':''}>${ICON.left}</button>
+        <button data-a="r" aria-label="Geser ke kanan" ${i===pages.length-1?'disabled':''}>${ICON.right}</button>
+        <button data-a="d" aria-label="Hapus halaman">${ICON.del}</button>
+      </div>`;
+    li.querySelector('.thumb').onclick=()=>editExisting(p);
+    li.querySelectorAll('.tools button').forEach(b=>b.onclick=()=>cardAction(b, p));
+    g.appendChild(li);
+  });
+  const n=pages.length;
+  $('count').textContent = n+' halaman';
+  $('empty').hidden = n>0;
+  $('btnExport').disabled = n===0;
+  $('btnClear').hidden = n===0;
+}
+async function cardAction(btn, p){
+  const i=pages.indexOf(p), a=btn.dataset.a;
+  if (a==='l' && i>0){ [pages[i-1],pages[i]]=[pages[i],pages[i-1]]; saveOrder(); render(); }
+  else if (a==='r' && i<pages.length-1){ [pages[i+1],pages[i]]=[pages[i],pages[i+1]]; saveOrder(); render(); }
+  else if (a==='d'){
+    if (!btn.classList.contains('armed')){ btn.classList.add('armed'); btn.setAttribute('aria-label','Ketuk lagi untuk menghapus'); setTimeout(()=>btn.classList.remove('armed'),2500); return; }
+    pages.splice(i,1); if (p.url) URL.revokeObjectURL(p.url); await DB.del(p.id); saveOrder(); render(); toast(`Halaman ${i+1} dihapus`);
+  }
+}
+$('btnClear').onclick = async (ev) => {
+  const b=ev.currentTarget;
+  if (!b.classList.contains('warn')){ b.classList.add('warn'); b.textContent='Ketuk lagi untuk hapus semua'; setTimeout(()=>{ b.classList.remove('warn'); b.textContent='Hapus semua'; },3000); return; }
+  b.classList.remove('warn'); b.textContent='Hapus semua';
+  pages.forEach(p=>p.url&&URL.revokeObjectURL(p.url)); pages=[]; await DB.clear(); saveOrder(); render(); toast('Semua halaman dihapus');
+};
+
+/* ====== Editor ====== */
+const ed = {page:null, isNew:false, fromCamera:false, bmp:null, srcData:null, corners:null, rot:0, filter:'tajam', step:1,
+  view:{k:1,ox:0,oy:0}, drag:-1, pointer:null, preview:null, previewBase:null};
+const cvs=$('cv'), ctx=cvs.getContext('2d');
+
+async function editExisting(p){
+  busy(true,'Membuka halaman…'); await tick();
+  try{ const bmp=await loadBitmap(p.orig); busy(false); openEditor(p,{isNew:false, bmp}); }
+  catch(e){ busy(false); toast('Halaman tidak bisa dibuka'); }
+}
+function openEditor(p, o){
+  ed.page=p; ed.isNew=!!o.isNew; ed.fromCamera=!!o.fromCamera;
+  ed.bmp=o.srcCanvas||o.bmp; ed.srcData=null;
+  ed.corners=p.corners.map(c=>({...c})); ed.rot=p.rot||0; ed.filter=p.filter||defFilter;
+  $('edTitle').textContent = ed.isNew ? `Halaman ${pages.length+1}` : `Halaman ${pages.indexOf(p)+1}`;
+  $('editor').hidden=false; document.body.style.overflow='hidden';
+  setStep(1);
+}
+function closeEditor(){
+  $('editor').hidden=true; document.body.style.overflow='';
+  if (ed.bmp && ed.bmp.close) ed.bmp.close();
+  ed.bmp=null; ed.srcData=null; ed.preview=null; ed.previewBase=null; ed.page=null;
+}
+function srcData(){ if (!ed.srcData) ed.srcData=getImageData(ed.bmp, ed.page.w, ed.page.h); return ed.srcData; }
+
+function setStep(n){
+  ed.step=n;
+  $('toolsCrop').hidden = n!==1; $('toolsFilter').hidden = n!==2;
+  $('edBack').hidden = n!==2;
+  $('edRot').hidden = n!==2;
+  $('edSaveMore').hidden = !(n===2 && ed.isNew && ed.fromCamera);
+  $('edNext').textContent = n===1 ? 'Lanjut' : 'Simpan';
+  $('edStep').textContent = n===1 ? '1/2 Potong' : '2/2 Filter';
+  $('edHint').textContent = n===1 ? 'Geser titik sudut ke tepi kertas' : FILTER_NAMES[ed.filter];
+  document.querySelectorAll('#toolsFilter [data-f]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.f===ed.filter));
+  if (n===2) buildPreview(); else draw();
+}
+function sizeCanvas(){
+  const r=$('stage').getBoundingClientRect(), dpr=Math.min(3, window.devicePixelRatio||1);
+  const W=Math.round(r.width*dpr), H=Math.round(r.height*dpr);
+  if (cvs.width!==W || cvs.height!==H){ cvs.width=W; cvs.height=H; }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w:r.width, h:r.height};
+}
+function fit(iw, ih, sw, sh, pad){ const k=Math.min((sw-pad*2)/iw, (sh-pad*2-24)/ih); return {k, ox:(sw-iw*k)/2, oy:(sh-24-ih*k)/2}; }
+
+function draw(){
+  if ($('editor').hidden || !ed.page) return;
+  const {w,h}=sizeCanvas(); ctx.clearRect(0,0,w,h);
+  if (ed.step===2){
+    const c=ed.preview; if (!c) return;
+    const v=fit(c.width,c.height,w,h,16);
+    ctx.fillStyle='#000'; ctx.fillRect(v.ox-1,v.oy-1,c.width*v.k+2,c.height*v.k+2);
+    ctx.imageSmoothingQuality='high'; ctx.drawImage(c, v.ox, v.oy, c.width*v.k, c.height*v.k);
+    return;
+  }
+  const iw=ed.page.w, ih=ed.page.h, v=fit(iw,ih,w,h,28); ed.view=v;
+  ctx.drawImage(ed.bmp, v.ox, v.oy, iw*v.k, ih*v.k);
+  const P=ed.corners.map(c=>({x:v.ox+c.x*v.k, y:v.oy+c.y*v.k}));
+  // gelapkan area di luar kertas
+  ctx.save(); ctx.beginPath(); ctx.rect(v.ox, v.oy, iw*v.k, ih*v.k);
+  ctx.moveTo(P[0].x,P[0].y); for (let i=3;i>=1;i--) ctx.lineTo(P[i].x,P[i].y); ctx.closePath();
+  ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fill('evenodd'); ctx.restore();
+  ctx.beginPath(); ctx.moveTo(P[0].x,P[0].y); for (let i=1;i<4;i++) ctx.lineTo(P[i].x,P[i].y); ctx.closePath();
+  ctx.lineWidth=2; ctx.strokeStyle='#5d9ce2'; ctx.stroke();
+  P.forEach((p,i)=>{ ctx.beginPath(); ctx.arc(p.x,p.y, ed.drag===i?16:12, 0, Math.PI*2); ctx.fillStyle='rgba(93,156,226,.35)'; ctx.fill(); ctx.lineWidth=2.5; ctx.strokeStyle='#fff'; ctx.stroke(); });
+  if (ed.drag>=0) drawLoupe(P[ed.drag], ed.corners[ed.drag], w);
+}
+function drawLoupe(p, c, sw){
+  const R=58, Z=2.6, v=ed.view;
+  let lx=p.x, ly=p.y-R-40; if (ly-R<4) ly=p.y+R+40;
+  lx=Math.max(R+4, Math.min(sw-R-4, lx));
+  const rs=R/(v.k*Z);
+  ctx.save(); ctx.beginPath(); ctx.arc(lx,ly,R,0,Math.PI*2); ctx.clip();
+  ctx.fillStyle='#000'; ctx.fillRect(lx-R,ly-R,R*2,R*2);
+  ctx.drawImage(ed.bmp, c.x-rs, c.y-rs, rs*2, rs*2, lx-R, ly-R, R*2, R*2);
+  ctx.strokeStyle='#5d9ce2'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(lx-R,ly); ctx.lineTo(lx+R,ly); ctx.moveTo(lx,ly-R); ctx.lineTo(lx,ly+R); ctx.stroke();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(lx,ly,R,0,Math.PI*2); ctx.lineWidth=3; ctx.strokeStyle='#fff'; ctx.stroke();
+}
+function stagePoint(e){ const r=cvs.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+cvs.addEventListener('pointerdown', e=>{
+  if (ed.step!==1) return;
+  const pt=stagePoint(e), v=ed.view; let best=-1, bd=44;
+  ed.corners.forEach((c,i)=>{ const d=Math.hypot(v.ox+c.x*v.k-pt.x, v.oy+c.y*v.k-pt.y); if (d<bd){bd=d;best=i;} });
+  if (best<0) return;
+  ed.drag=best; ed.grab={dx:v.ox+ed.corners[best].x*v.k-pt.x, dy:v.oy+ed.corners[best].y*v.k-pt.y};
+  cvs.setPointerCapture(e.pointerId); draw();
+});
+cvs.addEventListener('pointermove', e=>{
+  if (ed.drag<0) return;
+  const pt=stagePoint(e), v=ed.view;
+  let x=(pt.x+ed.grab.dx-v.ox)/v.k, y=(pt.y+ed.grab.dy-v.oy)/v.k;
+  ed.corners[ed.drag]={x:Math.max(0,Math.min(ed.page.w,x)), y:Math.max(0,Math.min(ed.page.h,y))};
+  draw();
+});
+const endDrag=()=>{ if (ed.drag>=0){ ed.drag=-1; draw(); } };
+cvs.addEventListener('pointerup', endDrag); cvs.addEventListener('pointercancel', endDrag);
+window.addEventListener('resize', ()=>draw());
+
+function quadOk(c){ // cembung & cukup besar
+  let sign=0;
+  for (let i=0;i<4;i++){ const a=c[i], b=c[(i+1)%4], d=c[(i+2)%4]; const z=(b.x-a.x)*(d.y-b.y)-(b.y-a.y)*(d.x-b.x); if (Math.abs(z)<1e-6) return false; const s=Math.sign(z); if (sign && s!==sign) return false; sign=s; }
+  return Math.min(dist(c[0],c[1]),dist(c[1],c[2]),dist(c[2],c[3]),dist(c[3],c[0]))>20;
+}
+async function buildPreview(){
+  busy(true,'Merapikan…'); await tick();
+  try{
+    ed.previewBase = warp(srcData(), ed.corners, MAX_PREVIEW);
+    renderPreview();
+  } finally { busy(false); }
+}
+function renderPreview(){
+  const b=ed.previewBase; const copy=new ImageData(new Uint8ClampedArray(b.data), b.width, b.height);
+  applyFilter(copy, ed.filter);
+  ed.preview=rotateCanvas(imageDataToCanvas(copy), ed.rot);
+  $('edHint').textContent=FILTER_NAMES[ed.filter];
+  draw();
+}
+
+$('edDetect').onclick = async ()=>{
+  const cv=await ensureCV(); if (!cv) return;
+  const r=detectCorners(ed.bmp, ed.page.w, ed.page.h);
+  if (r){ ed.corners=r; draw(); toast('Tepi kertas terdeteksi'); }
+  else toast('Tepi tidak ditemukan. Geser sudut secara manual.');
+};
+$('edFull').onclick = ()=>{ ed.corners=fullCorners(ed.page.w, ed.page.h); draw(); };
+document.querySelectorAll('#toolsFilter [data-f]').forEach(b=>b.onclick=()=>{
+  ed.filter=b.dataset.f;
+  document.querySelectorAll('#toolsFilter [data-f]').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  renderPreview();
+});
+$('edRot').onclick = ()=>{ ed.rot=(ed.rot+1)%4; renderPreview(); };
+$('edCancel').onclick = closeEditor;
+$('edBack').onclick = ()=>setStep(1);
+$('edNext').onclick = ()=>{
+  if (ed.step===1){ if (!quadOk(ed.corners)){ toast('Bentuk potongan tidak valid. Atur ulang sudutnya.'); return; } setStep(2); }
+  else saveEditor(false);
+};
+$('edSaveMore').onclick = ()=>saveEditor(true);
+
+async function saveEditor(more){
+  busy(true,'Menyimpan halaman…'); await tick();
+  try{
+    const p=ed.page;
+    p.corners=ed.corners.map(c=>({...c})); p.rot=ed.rot; p.filter=ed.filter;
+    const out=processToCanvas(srcData(), p.corners, p.filter, p.rot, MAX_ORIG);
+    p.out=await toBlob(out,'image/jpeg',0.9);
+    defFilter=ed.filter; LS.set('filter', defFilter);
+    if (ed.isNew) await addPage(p); else await updatePage(p);
+    closeEditor(); busy(false);
+    if (more) $('inCam').click();
+  }catch(e){ busy(false); toast('Gagal menyimpan: '+e.message); }
+}
+
+/* ====== Ekspor ====== */
+// Hasil render disimpan sementara selama lembar ekspor terbuka, agar ukuran file bisa dihitung
+// lebih dulu dan tombol Unduh/Bagikan memakai hasil yang sama (tidak render dua kali).
+let exSession=0, sizeToken=0;
+const renderCache=new Map();
+const pagesSig=()=>pages.map(p=>p.id+':'+(p.out?p.out.size:0)).join(',');
+const TYPE={pdf:'image/jpeg', jpg:'image/jpeg', png:'image/png'};
+
+async function renderForExport(p, side, type, q){
+  const bmp=await loadBitmap(p.out);
+  const bw=bmp.width||bmp.naturalWidth, bh=bmp.height||bmp.naturalHeight, s=Math.min(1, side/Math.max(bw,bh));
+  const c=canvas(bw*s, bh*s), x=c.getContext('2d');
+  if (type==='image/jpeg'){ x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); }
+  x.imageSmoothingQuality='high'; x.drawImage(bmp,0,0,c.width,c.height); closeBmp(bmp);
+  return {blob: await toBlob(c, type, q), w:c.width, h:c.height};
+}
+function getRenders(type, qk){
+  const key=type+'|'+qk, sig=pagesSig(), e=renderCache.get(key);
+  if (e && e.sig===sig) return e.promise;
+  const Q=QUALITY[qk], sess=exSession, list=pages.slice();
+  const promise=(async()=>{
+    const out=[];
+    for (const pg of list){
+      if (sess!==exSession) throw new Error('dibatalkan');
+      out.push(await renderForExport(pg, Q.side, type, Q.q)); await tick();
+    }
+    return out;
+  })();
+  renderCache.set(key, {sig, promise});
+  promise.catch(()=>{ if (renderCache.get(key)?.promise===promise) renderCache.delete(key); });
+  return promise;
+}
+async function pdfFromRenders(renders, margin, name){
+  const {jsPDF}=window.jspdf; let doc=null;
+  for (let i=0;i<renders.length;i++){
+    const r=renders[i], land=r.w>r.h, PW=land?297:210, PH=land?210:297, m=margin?10:0;
+    if (!doc) doc=new jsPDF({unit:'mm', format:'a4', orientation:land?'l':'p', compress:true});
+    else doc.addPage('a4', land?'l':'p');
+    const k=Math.min((PW-2*m)/r.w, (PH-2*m)/r.h), w=r.w*k, h=r.h*k;
+    doc.addImage(new Uint8Array(await r.blob.arrayBuffer()), 'JPEG', (PW-w)/2, (PH-h)/2, w, h, 'p'+i, 'NONE');
+  }
+  doc.setProperties({title:name, creator:'PindaiDok'});
+  return new File([doc.output('blob')], name+'.pdf', {type:'application/pdf'});
+}
+async function filesFor(fmt, qk, margin){
+  const name=safeName($('fname').value), renders=await getRenders(TYPE[fmt], qk);
+  if (fmt==='pdf') return [await pdfFromRenders(renders, margin, name)];
+  const n=renders.length;
+  return renders.map((r,i)=>new File([r.blob], n===1 ? `${name}.${fmt}` : `${name}_${String(i+1).padStart(2,'0')}.${fmt}`, {type:TYPE[fmt]}));
+}
+async function sizeOf(fmt, qk){
+  const files=await filesFor(fmt, qk, exportOpt.margin);
+  let total=files.reduce((s,f)=>s+f.size,0);
+  if (files.length>1) total+=files.reduce((s,f)=>s+76+2*f.name.length,0)+22; // overhead ZIP tanpa kompresi
+  return total;
+}
+async function updateSizes(){
+  const my=++sizeToken, fmt=exportOpt.fmt, n=pages.length;
+  const order=[exportOpt.q, ...Object.keys(QUALITY).filter(k=>k!==exportOpt.q)];
+  document.querySelectorAll('#segQ .sz').forEach(el=>el.textContent='…');
+  $('exSize').textContent='Menghitung ukuran file…';
+  for (const qk of order){
+    let size;
+    try{ size=await sizeOf(fmt, qk); }catch(e){ return; }
+    if (my!==sizeToken) return;
+    document.querySelector(`#segQ [data-v="${qk}"] .sz`).textContent=fmtSize(size);
+    if (qk===exportOpt.q){
+      const what = fmt==='pdf' ? `1 file PDF, ${n} halaman A4` : (n>1 ? `ZIP berisi ${n} gambar ${fmt.toUpperCase()}` : `1 gambar ${fmt.toUpperCase()}`);
+      $('exSize').innerHTML=`Ukuran file: <b>${fmtSize(size)}</b><br><span>${what}</span>`;
+    }
+  }
+}
+function syncExportUI(){
+  document.querySelectorAll('#segFmt button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===exportOpt.fmt));
+  document.querySelectorAll('#segQ button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===exportOpt.q));
+  $('exMargin').checked=!!exportOpt.margin;
+  $('marginRow').hidden = exportOpt.fmt!=='pdf';
+  $('exCount').textContent = `${pages.length} halaman`;
+}
+function closeExport(){ $('exportSheet').hidden=true; exSession++; sizeToken++; renderCache.clear(); }
+document.querySelectorAll('#segFmt button').forEach(b=>b.onclick=()=>{ exportOpt.fmt=b.dataset.v; LS.set('export',exportOpt); syncExportUI(); updateSizes(); });
+document.querySelectorAll('#segQ button').forEach(b=>b.onclick=()=>{ exportOpt.q=b.dataset.v; LS.set('export',exportOpt); syncExportUI(); updateSizes(); });
+$('exMargin').onchange = e=>{ exportOpt.margin=e.target.checked; LS.set('export',exportOpt); };
+$('btnExport').onclick = ()=>{
+  exSession++; renderCache.clear(); syncExportUI();
+  $('exShare').hidden = !(navigator.canShare && navigator.share);
+  $('exportSheet').hidden=false; updateSizes();
+};
+$('exCancel').onclick = closeExport;
+$('exportSheet').addEventListener('click', e=>{ if (e.target.id==='exportSheet') closeExport(); });
+
+function download(file){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 60000);
+}
+async function zipFiles(files, name){
+  const z=new JSZip(); files.forEach(f=>z.file(f.name, f));
+  const blob=await z.generateAsync({type:'blob', compression:'STORE'});
+  return new File([blob], name+'.zip', {type:'application/zip'});
+}
+async function prepare(){
+  busy(true, exportOpt.fmt==='pdf' ? 'Menyusun PDF…' : 'Menyiapkan gambar…'); await tick();
+  return await filesFor(exportOpt.fmt, exportOpt.q, exportOpt.margin);
+}
+$('exSave').onclick = async ()=>{
+  try{
+    let files=await prepare();
+    if (files.length>1) files=[await zipFiles(files, safeName($('fname').value))];
+    busy(false); download(files[0]); closeExport();
+    toast(`Tersimpan: ${files[0].name} (${fmtSize(files[0].size)})`, 4000);
+  }catch(e){ busy(false); toast('Ekspor gagal: '+e.message, 4000); }
+};
+$('exShare').onclick = async ()=>{
+  try{
+    const files=await prepare(); busy(false);
+    if (navigator.canShare && !navigator.canShare({files})){ toast('Perangkat ini tidak bisa membagikan file ini. Gunakan Unduh.'); return; }
+    await navigator.share({files, title:safeName($('fname').value)});
+    closeExport();
+  }catch(e){ busy(false); if (e.name!=='AbortError') toast('Gagal membagikan: '+e.message, 4000); }
+};
+
+/* ====== Tombol utama ====== */
+$('btnCam').onclick = ()=>{ loadCV().catch(()=>{}); $('inCam').click(); };
+$('btnGal').onclick = ()=>{ loadCV().catch(()=>{}); $('inGal').click(); };
+$('inCam').onchange = e=>{ const f=e.target.files; handleFiles(f, true).finally(()=>e.target.value=''); };
+$('inGal').onchange = e=>{ const f=e.target.files; handleFiles(f, false).finally(()=>e.target.value=''); };
+const fname=$('fname');
+fname.value = LS.get('fname', '') || ('Scan '+today());
+fname.onchange = ()=>{ fname.value=safeName(fname.value); LS.set('fname', fname.value); };
+
+/* ====== Mulai ====== */
+(async function init(){
+  if (await DB.open()){
+    const all=await DB.all(), order=LS.get('order', []);
+    const byId=new Map(all.map(p=>[p.id,p]));
+    pages = order.filter(id=>byId.has(id)).map(id=>byId.get(id));
+    all.forEach(p=>{ if (!order.includes(p.id)) pages.push(p); });
+    pages = pages.filter(p=>p.out);
+  }
+  render();
+  if ('serviceWorker' in navigator && location.protocol!=='file:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>

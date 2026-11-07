@@ -106,6 +106,10 @@ main{padding:14px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(sa
 .sheet .row .btn{flex:1}
 .seg .sz{font:600 12px/1.3 var(--mono);color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums}
 .seg button[aria-pressed="true"] .sz{color:var(--accent)}
+.sheet{max-height:92%;overflow-y:auto}
+.maxrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.maxrow input{width:96px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:600 15px var(--mono)}
+.maxrow button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font:600 13px var(--mono)}
 .size-box{margin:0;padding:10px 12px;border-radius:10px;background:var(--bg);font-size:14px}
 .size-box b{font:700 16px var(--mono);font-variant-numeric:tabular-nums}
 .size-box span{font-size:12px;color:var(--muted)}
@@ -127,7 +131,7 @@ main{padding:14px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(sa
     <span class="sp"></span>
     <button class="link-btn" id="btnClear" hidden>Hapus semua</button>
   </div>
-  <nav class="tabs"><a href="./" aria-current="page">Scan</a><a href="edit.html">Edit PDF</a></nav>
+  <nav class="tabs"><a href="./" aria-current="page">Scan</a><a href="edit.html">Edit PDF</a><a href="riwayat.html">Riwayat</a></nav>
 </header>
 
 <main>
@@ -193,11 +197,28 @@ main{padding:14px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(sa
         <button data-v="jpg">JPG<small>per halaman</small></button>
       </div>
     </div>
+    <div class="field" id="fLayout"><span>Tata letak</span>
+      <div class="seg" id="segLayout">
+        <button data-v="biasa">Biasa<small>1 per halaman</small></button>
+        <button data-v="kartu">Kartu<small>KTP, kartu pelajar</small></button>
+        <button data-v="pasfoto">Pas foto<small>siap gunting</small></button>
+      </div>
+      <p class="note" id="layoutNote"></p>
+    </div>
+    <div class="field" id="fFoto"><span>Ukuran & jumlah pas foto</span>
+      <div class="seg" id="segFoto"><button data-v="2x3">2 × 3</button><button data-v="3x4">3 × 4</button><button data-v="4x6">4 × 6</button></div>
+      <div class="seg" id="segJml"><button data-v="4">4 lembar</button><button data-v="8">8 lembar</button><button data-v="penuh">Penuh A4</button></div>
+    </div>
     <div class="field"><span>Ukuran file</span>
       <div class="seg" id="segQ">
         <button data-v="kecil">Kecil<small>kirim WA</small><small class="sz">…</small></button>
         <button data-v="sedang">Sedang<small>umum</small><small class="sz">…</small></button>
         <button data-v="tinggi">Tinggi<small>cetak</small><small class="sz">…</small></button>
+        <button data-v="maks">Batas<small id="maxLbl">maks. KB</small><small class="sz">…</small></button>
+      </div>
+      <div class="maxrow" id="fMax">
+        <label for="exMax">Maksimal</label><input id="exMax" type="number" inputmode="numeric" min="30" step="10"><span>KB</span>
+        <button data-kb="200">200</button><button data-kb="500">500</button><button data-kb="1000">1000</button>
       </div>
     </div>
     <label class="check" id="marginRow"><input type="checkbox" id="exMargin"> Beri margin 1 cm di tepi halaman A4</label>
@@ -215,6 +236,7 @@ main{padding:14px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(sa
 
 <script src="vendor/jspdf.umd.min.js"></script>
 <script src="vendor/jszip.min.js"></script>
+<script src="common.js"></script>
 <script>
 'use strict';
 /* ====== Konstanta ====== */
@@ -252,7 +274,7 @@ const DB = {
 /* ====== State ====== */
 let pages = [];               // {id, orig, out, w, h, corners, rot, filter, url}
 let defFilter = LS.get('filter', 'tajam');
-let exportOpt = LS.get('export', {fmt:'pdf', q:'sedang', margin:false});
+let exportOpt = Object.assign({fmt:'pdf', q:'sedang', margin:false, layout:'biasa', foto:'3x4', jumlah:'8', maxKB:500}, LS.get('export', {}));
 
 /* ====== Util ====== */
 function toast(msg, ms=2600){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true, ms); }
@@ -735,90 +757,130 @@ async function saveEditor(more){
 }
 
 /* ====== Ekspor ====== */
-// Hasil render disimpan sementara selama lembar ekspor terbuka, agar ukuran file bisa dihitung
-// lebih dulu dan tombol Unduh/Bagikan memakai hasil yang sama (tidak render dua kali).
+// Hasil render disimpan sementara selama lembar ekspor terbuka: ukuran file dihitung dari file
+// yang sebenarnya, lalu tombol Unduh/Bagikan memakai hasil yang sama.
 let exSession=0, sizeToken=0;
-const renderCache=new Map();
+const memo=new Map();
+function remember(key, fn){ if (!memo.has(key)){ const p=fn(); memo.set(key,p); p.catch(()=>{ if (memo.get(key)===p) memo.delete(key); }); } return memo.get(key); }
 const pagesSig=()=>pages.map(p=>p.id+':'+(p.out?p.out.size:0)).join(',');
 const TYPE={pdf:'image/jpeg', jpg:'image/jpeg', png:'image/png'};
+const FOTO={'2x3':[20,30], '3x4':[30,40], '4x6':[40,60]};   // mm
+const layoutOf=()=> exportOpt.fmt==='pdf' ? exportOpt.layout : 'biasa';
+const ratioOf=()=> layoutOf()==='pasfoto' ? FOTO[exportOpt.foto][0]/FOTO[exportOpt.foto][1] : 0;
+const optSig=()=>[exportOpt.fmt, layoutOf(), exportOpt.foto, exportOpt.jumlah, exportOpt.margin, safeName($('fname').value), pagesSig()].join('|');
 
-async function renderForExport(p, side, type, q){
+async function renderForExport(p, side, type, q, ratio){
   const bmp=await loadBitmap(p.out);
-  const bw=bmp.width||bmp.naturalWidth, bh=bmp.height||bmp.naturalHeight, s=Math.min(1, side/Math.max(bw,bh));
-  const c=canvas(bw*s, bh*s), x=c.getContext('2d');
+  const bw=bmp.width||bmp.naturalWidth, bh=bmp.height||bmp.naturalHeight;
+  let sx=0, sy=0, sw=bw, sh=bh;
+  if (ratio){ if (bw/bh>ratio){ sw=bh*ratio; sx=(bw-sw)/2; } else { sh=bw/ratio; sy=(bh-sh)/2; } }   // potong tengah sesuai rasio
+  const s=Math.min(1, side/Math.max(sw,sh)), c=canvas(sw*s, sh*s), x=c.getContext('2d');
   if (type==='image/jpeg'){ x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); }
-  x.imageSmoothingQuality='high'; x.drawImage(bmp,0,0,c.width,c.height); closeBmp(bmp);
+  x.imageSmoothingQuality='high'; x.drawImage(bmp, sx, sy, sw, sh, 0, 0, c.width, c.height); closeBmp(bmp);
   return {blob: await toBlob(c, type, q), w:c.width, h:c.height};
 }
-function getRenders(type, qk){
-  const key=type+'|'+qk, sig=pagesSig(), e=renderCache.get(key);
-  if (e && e.sig===sig) return e.promise;
-  const Q=QUALITY[qk], sess=exSession, list=pages.slice();
-  const promise=(async()=>{
+function getRenders(type, side, q){
+  const ratio=ratioOf(), key=['r',type,side,q,ratio,pagesSig()].join('|'), sess=exSession, list=pages.slice();
+  return remember(key, async()=>{
     const out=[];
-    for (const pg of list){
-      if (sess!==exSession) throw new Error('dibatalkan');
-      out.push(await renderForExport(pg, Q.side, type, Q.q)); await tick();
-    }
+    for (const pg of list){ if (sess!==exSession) throw new Error('dibatalkan'); out.push(await renderForExport(pg, side, type, q, ratio)); await tick(); }
     return out;
-  })();
-  renderCache.set(key, {sig, promise});
-  promise.catch(()=>{ if (renderCache.get(key)?.promise===promise) renderCache.delete(key); });
-  return promise;
+  });
 }
-async function pdfFromRenders(renders, margin, name){
-  const {jsPDF}=window.jspdf; let doc=null;
-  for (let i=0;i<renders.length;i++){
-    const r=renders[i], land=r.w>r.h, PW=land?297:210, PH=land?210:297, m=margin?10:0;
-    if (!doc) doc=new jsPDF({unit:'mm', format:'a4', orientation:land?'l':'p', compress:true});
-    else doc.addPage('a4', land?'l':'p');
-    const k=Math.min((PW-2*m)/r.w, (PH-2*m)/r.h), w=r.w*k, h=r.h*k;
-    doc.addImage(new Uint8Array(await r.blob.arrayBuffer()), 'JPEG', (PW-w)/2, (PH-h)/2, w, h, 'p'+i, 'NONE');
+async function pdfFromRenders(renders, name){
+  const {jsPDF}=window.jspdf, L=layoutOf(); let doc=null;
+  const page=land=>{ if (!doc) doc=new jsPDF({unit:'mm', format:'a4', orientation:land?'l':'p', compress:true}); else doc.addPage('a4', land?'l':'p'); };
+  const bytes=async r=>new Uint8Array(await r.blob.arrayBuffer());
+  const cut=(x,y,w,h)=>{ doc.setDrawColor(185); doc.setLineWidth(0.15); doc.rect(x,y,w,h); };
+  if (L==='kartu'){
+    // ukuran kartu ID-1 asli: 85,6 × 54 mm, dua kartu (depan & belakang) per lembar
+    for (let i=0;i<renders.length;i+=2){
+      page(false);
+      const pair=renders.slice(i,i+2), box=pair.map(r=>{ const land=r.w>=r.h, bw=land?85.6:54, bh=land?54:85.6, k=Math.min(bw/r.w, bh/r.h); return {w:r.w*k, h:r.h*k}; });
+      const gap=15, total=box.reduce((t,b)=>t+b.h,0)+gap*(box.length-1); let y=(297-total)/2;
+      for (let j=0;j<pair.length;j++){ const b=box[j], x=(210-b.w)/2; doc.addImage(await bytes(pair[j]),'JPEG',x,y,b.w,b.h,'k'+(i+j),'NONE'); cut(x,y,b.w,b.h); y+=b.h+gap; }
+    }
+  } else if (L==='pasfoto'){
+    const [fw,fh]=FOTO[exportOpt.foto], g=2.5, cols=Math.floor((190+g)/(fw+g)), rows=Math.floor((277+g)/(fh+g));
+    const n=exportOpt.jumlah==='penuh' ? cols*rows : Math.min(cols*rows, +exportOpt.jumlah);
+    const uc=Math.min(cols,n), x0=(210-(uc*fw+(uc-1)*g))/2;
+    for (let i=0;i<renders.length;i++){
+      page(false); const data=await bytes(renders[i]);
+      for (let k=0;k<n;k++){ const x=x0+(k%cols)*(fw+g), y=10+Math.floor(k/cols)*(fh+g); doc.addImage(data,'JPEG',x,y,fw,fh,'f'+i,'NONE'); cut(x,y,fw,fh); }
+    }
+  } else {
+    for (let i=0;i<renders.length;i++){
+      const r=renders[i], land=r.w>r.h, PW=land?297:210, PH=land?210:297, m=exportOpt.margin?10:0;
+      page(land);
+      const k=Math.min((PW-2*m)/r.w, (PH-2*m)/r.h), w=r.w*k, h=r.h*k;
+      doc.addImage(await bytes(r),'JPEG',(PW-w)/2,(PH-h)/2,w,h,'p'+i,'NONE');
+    }
   }
   doc.setProperties({title:name, creator:'PindaiDok'});
-  return new File([doc.output('blob')], name+'.pdf', {type:'application/pdf'});
+  return doc.output('blob');
 }
-async function filesFor(fmt, qk, margin){
-  const name=safeName($('fname').value), renders=await getRenders(TYPE[fmt], qk);
-  if (fmt==='pdf') return [await pdfFromRenders(renders, margin, name)];
-  const n=renders.length;
-  return renders.map((r,i)=>new File([r.blob], n===1 ? `${name}.${fmt}` : `${name}_${String(i+1).padStart(2,'0')}.${fmt}`, {type:TYPE[fmt]}));
+function filesFor(side, q){
+  const fmt=exportOpt.fmt, name=safeName($('fname').value);
+  return remember(['f',side,q,optSig()].join('|'), async()=>{
+    const renders=await getRenders(TYPE[fmt], side, q);
+    if (fmt==='pdf') return [new File([await pdfFromRenders(renders, name)], name+'.pdf', {type:'application/pdf'})];
+    const n=renders.length;
+    return renders.map((r,i)=>new File([r.blob], n===1 ? `${name}.${fmt}` : `${name}_${String(i+1).padStart(2,'0')}.${fmt}`, {type:TYPE[fmt]}));
+  });
 }
-async function sizeOf(fmt, qk){
-  const files=await filesFor(fmt, qk, exportOpt.margin);
-  let total=files.reduce((s,f)=>s+f.size,0);
-  if (files.length>1) total+=files.reduce((s,f)=>s+76+2*f.name.length,0)+22; // overhead ZIP tanpa kompresi
-  return total;
+function totalSize(files){ let t=files.reduce((s,f)=>s+f.size,0); if (files.length>1) t+=files.reduce((s,f)=>s+76+2*f.name.length,0)+22; return t; }
+/* Kualitas untuk pilihan saat ini; "Batas" mencari kualitas terbaik di bawah batas KB */
+function resolveQ(qk){
+  if (qk!=='maks') return Promise.resolve({side:QUALITY[qk].side, q:QUALITY[qk].q, ok:true});
+  const max=Math.max(30, +exportOpt.maxKB||500)*1024;
+  return remember(['t',max,optSig()].join('|'), ()=>cariUkuranTarget(max, async(side,q)=>totalSize(await filesFor(side,q))));
 }
+async function sizeOfQ(qk){ const r=await resolveQ(qk); return {size: totalSize(await filesFor(r.side, r.q)), ok:r.ok}; }
+
 async function updateSizes(){
   const my=++sizeToken, fmt=exportOpt.fmt, n=pages.length;
-  const order=[exportOpt.q, ...Object.keys(QUALITY).filter(k=>k!==exportOpt.q)];
+  const order=[exportOpt.q, ...['kecil','sedang','tinggi','maks'].filter(k=>k!==exportOpt.q)];
   document.querySelectorAll('#segQ .sz').forEach(el=>el.textContent='…');
-  $('exSize').textContent='Menghitung ukuran file…';
+  $('exSize').textContent = exportOpt.q==='maks' ? `Mencari kualitas terbaik di bawah ${exportOpt.maxKB} KB…` : 'Menghitung ukuran file…';
   for (const qk of order){
-    let size;
-    try{ size=await sizeOf(fmt, qk); }catch(e){ return; }
+    let r;
+    try{ r=await sizeOfQ(qk); }catch(e){ return; }
     if (my!==sizeToken) return;
-    document.querySelector(`#segQ [data-v="${qk}"] .sz`).textContent=fmtSize(size);
+    document.querySelector(`#segQ [data-v="${qk}"] .sz`).textContent=fmtSize(r.size);
     if (qk===exportOpt.q){
-      const what = fmt==='pdf' ? `1 file PDF, ${n} halaman A4` : (n>1 ? `ZIP berisi ${n} gambar ${fmt.toUpperCase()}` : `1 gambar ${fmt.toUpperCase()}`);
-      $('exSize').innerHTML=`Ukuran file: <b>${fmtSize(size)}</b><br><span>${what}</span>`;
+      const L=layoutOf();
+      const what = fmt!=='pdf' ? (n>1 ? `ZIP berisi ${n} gambar ${fmt.toUpperCase()}` : `1 gambar ${fmt.toUpperCase()}`)
+        : L==='kartu' ? `PDF ${Math.ceil(n/2)} lembar A4, kartu ukuran asli 8,6 × 5,4 cm`
+        : L==='pasfoto' ? `PDF ${n} lembar A4, pas foto ${exportOpt.foto.replace('x',' × ')} cm`
+        : `1 file PDF, ${n} halaman A4`;
+      let warn='';
+      if (qk==='maks') warn = r.ok ? ` (batas ${exportOpt.maxKB} KB)` : `<br><span style="color:var(--danger)">Tidak bisa di bawah ${exportOpt.maxKB} KB. Ini ukuran terkecil yang bisa dibuat; coba kurangi jumlah halaman.</span>`;
+      $('exSize').innerHTML=`Ukuran file: <b>${fmtSize(r.size)}</b>${r.ok&&qk==='maks'?warn:''}<br><span>${what}</span>${!r.ok?warn:''}`;
     }
   }
 }
+const NOTES={ kartu:'Scan bagian depan lalu belakang secara berurutan. Tiap 2 halaman dijadikan 1 lembar A4 dengan ukuran kartu asli, siap difotokopi atau dicetak.',
+  pasfoto:'Foto dipotong di bagian tengah sesuai ukuran. Untuk foto, pilih filter Asli saat scan. Satu halaman scan menjadi satu lembar A4 berisi beberapa salinan.' };
 function syncExportUI(){
-  document.querySelectorAll('#segFmt button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===exportOpt.fmt));
-  document.querySelectorAll('#segQ button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===exportOpt.q));
+  ['segFmt:fmt','segQ:q','segLayout:layout','segFoto:foto','segJml:jumlah'].forEach(t=>{ const [id,k]=t.split(':'); document.querySelectorAll(`#${id} button`).forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===exportOpt[k])); });
+  const L=layoutOf();
   $('exMargin').checked=!!exportOpt.margin;
-  $('marginRow').hidden = exportOpt.fmt!=='pdf';
+  $('fLayout').hidden = exportOpt.fmt!=='pdf';
+  $('fFoto').hidden = L!=='pasfoto';
+  $('layoutNote').textContent = NOTES[L]||''; $('layoutNote').hidden = !NOTES[L];
+  $('marginRow').hidden = exportOpt.fmt!=='pdf' || L!=='biasa';
+  $('fMax').hidden = exportOpt.q!=='maks';
+  $('exMax').value = exportOpt.maxKB; $('maxLbl').textContent = `maks. ${exportOpt.maxKB} KB`;
   $('exCount').textContent = `${pages.length} halaman`;
 }
-function closeExport(){ $('exportSheet').hidden=true; exSession++; sizeToken++; renderCache.clear(); }
-document.querySelectorAll('#segFmt button').forEach(b=>b.onclick=()=>{ exportOpt.fmt=b.dataset.v; LS.set('export',exportOpt); syncExportUI(); updateSizes(); });
-document.querySelectorAll('#segQ button').forEach(b=>b.onclick=()=>{ exportOpt.q=b.dataset.v; LS.set('export',exportOpt); syncExportUI(); updateSizes(); });
-$('exMargin').onchange = e=>{ exportOpt.margin=e.target.checked; LS.set('export',exportOpt); };
+function closeExport(){ $('exportSheet').hidden=true; exSession++; sizeToken++; memo.clear(); }
+function setOpt(k,v){ exportOpt[k]=v; LS.set('export',exportOpt); syncExportUI(); updateSizes(); }
+['segFmt:fmt','segQ:q','segLayout:layout','segFoto:foto','segJml:jumlah'].forEach(t=>{ const [id,k]=t.split(':'); document.querySelectorAll(`#${id} button`).forEach(b=>b.onclick=()=>setOpt(k,b.dataset.v)); });
+$('exMargin').onchange = e=>setOpt('margin', e.target.checked);
+$('exMax').onchange = e=>setOpt('maxKB', Math.max(30, Math.round(+e.target.value||500)));
+document.querySelectorAll('#fMax [data-kb]').forEach(b=>b.onclick=()=>setOpt('maxKB', +b.dataset.kb));
 $('btnExport').onclick = ()=>{
-  exSession++; renderCache.clear(); syncExportUI();
+  $('toast').hidden=true; exSession++; memo.clear(); syncExportUI();
   $('exShare').hidden = !(navigator.canShare && navigator.share);
   $('exportSheet').hidden=false; updateSizes();
 };
@@ -835,14 +897,15 @@ async function zipFiles(files, name){
   return new File([blob], name+'.zip', {type:'application/zip'});
 }
 async function prepare(){
-  busy(true, exportOpt.fmt==='pdf' ? 'Menyusun PDF…' : 'Menyiapkan gambar…'); await tick();
-  return await filesFor(exportOpt.fmt, exportOpt.q, exportOpt.margin);
+  busy(true, exportOpt.q==='maks' ? `Mencari kualitas di bawah ${exportOpt.maxKB} KB…` : exportOpt.fmt==='pdf' ? 'Menyusun PDF…' : 'Menyiapkan gambar…'); await tick();
+  const r=await resolveQ(exportOpt.q);
+  return await filesFor(r.side, r.q);
 }
 $('exSave').onclick = async ()=>{
   try{
     let files=await prepare();
     if (files.length>1) files=[await zipFiles(files, safeName($('fname').value))];
-    busy(false); download(files[0]); closeExport();
+    busy(false); download(files[0]); Riwayat.add(files[0], 'Scan'); closeExport();
     toast(`Tersimpan: ${files[0].name} (${fmtSize(files[0].size)})`, 4000);
   }catch(e){ busy(false); toast('Ekspor gagal: '+e.message, 4000); }
 };
@@ -851,6 +914,7 @@ $('exShare').onclick = async ()=>{
     const files=await prepare(); busy(false);
     if (navigator.canShare && !navigator.canShare({files})){ toast('Perangkat ini tidak bisa membagikan file ini. Gunakan Unduh.'); return; }
     await navigator.share({files, title:safeName($('fname').value)});
+    Riwayat.add(files.length>1 ? await zipFiles(files, safeName($('fname').value)) : files[0], 'Scan');
     closeExport();
   }catch(e){ busy(false); if (e.name!=='AbortError') toast('Gagal membagikan: '+e.message, 4000); }
 };

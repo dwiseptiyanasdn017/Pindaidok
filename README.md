@@ -11,11 +11,14 @@ Tanpa iklan, tanpa server: semua diproses di HP.
 ## Isi folder
 - `index.html` — tab Scan
 - `edit.html` — tab Edit PDF
+- `riwayat.html` — tab Riwayat (40 file terakhir disimpan di perangkat)
+- `common.js` — kode bersama (riwayat, pencarian ukuran maksimal KB)
 - `sw.js` — mode offline. **Naikkan `VERSI`** setiap kali `index.html` diubah.
 - `vendor/opencv.js` — deteksi tepi kertas (±10 MB, diunduh sekali saat scan pertama lalu tersimpan offline)
 - `vendor/jspdf.umd.min.js`, `vendor/jszip.min.js` — pembuat PDF dan ZIP
 - `vendor/pdf.min.js` + `pdf.worker.min.js` (membaca PDF), `vendor/pdf-lib.min.js` (menyusun PDF)
 - `vendor/docx.umd.js` — pembuat Word
+- `vendor/pdf-lib-enc.min.js` — pengunci PDF dengan kata sandi (AES-128)
 - `vendor/tess/` — OCR bahasa Indonesia (±5,6 MB, diunduh sekali saat pertama dipakai)
 
 ## Catatan

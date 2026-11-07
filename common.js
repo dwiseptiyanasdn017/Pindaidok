@@ -49,3 +49,23 @@ async function cariUkuranTarget(maxBytes, build, onStep) {
   if (best == null) { const i = TANGGA.length - 1; return { side: TANGGA[i][0], q: TANGGA[i][1], size: await size(i), ok: false }; }
   return { side: TANGGA[best][0], q: TANGGA[best][1], size: await size(best), ok: true };
 }
+
+/* Tema tampilan: Otomatis (ikut HP) → Cerah → Gelap */
+const Tema = {
+  urut: ['auto', 'light', 'dark'],
+  nama: { auto: 'Otomatis', light: 'Cerah', dark: 'Gelap' },
+  ikon: {
+    auto: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>',
+    light: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    dark: '<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>'
+  },
+  get() { try { const t = localStorage.getItem('pd_theme'); return t === 'light' || t === 'dark' ? t : 'auto'; } catch (e) { return 'auto'; } },
+  set(t) {
+    try { t === 'auto' ? localStorage.removeItem('pd_theme') : localStorage.setItem('pd_theme', t); } catch (e) {}
+    if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+    this.tombol();
+  },
+  tombol() { const b = document.getElementById('btnTheme'); if (!b) return; const t = this.get(); b.innerHTML = this.ikon[t] + this.nama[t]; b.title = 'Tema: ' + this.nama[t]; },
+  pasang() { const b = document.getElementById('btnTheme'); if (!b) return; this.tombol(); b.onclick = () => { const u = this.urut; this.set(u[(u.indexOf(this.get()) + 1) % u.length]); }; }
+};
+Tema.pasang();

@@ -2,6 +2,8 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
+<script>try{var t=localStorage.getItem("pd_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>PindaiDok</title>
 <meta name="description" content="Scan dokumen ke PDF/PNG ukuran A4, tanpa iklan, semua diproses di perangkat.">
@@ -10,6 +12,8 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
+.theme-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:600}
+.theme-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* Layout: bilah atas tipis, grid halaman, bilah aksi menempel di bawah; editor layar penuh gelap */
 :root{
   --bg:#eef1f4; --surface:#ffffff; --ink:#15202b; --muted:#5a6876; --line:#d5dbe2;
@@ -19,9 +23,12 @@
   --mono:ui-monospace,"SF Mono","Roboto Mono",monospace;
   color-scheme:light;
 }
-@media (prefers-color-scheme:dark){:root{
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0f1419; --surface:#18202a; --ink:#e6ebf0; --muted:#94a2b1; --line:#2b3644;
   --accent:#5d9ce2; --accent-ink:#0b1420; --accent-soft:#1b2a3c; --danger:#f97066; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1419; --surface:#18202a; --ink:#e6ebf0; --muted:#94a2b1; --line:#2b3644;
+  --accent:#5d9ce2; --accent-ink:#0b1420; --accent-soft:#1b2a3c; --danger:#f97066; color-scheme:dark}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--font);-webkit-tap-highlight-color:transparent;
@@ -38,7 +45,7 @@ svg.i{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-widt
 .tabs a{flex:1;text-align:center;padding:9px 0 10px;color:var(--muted);text-decoration:none;font-weight:600;border-bottom:3px solid transparent}
 .tabs a[aria-current="page"]{color:var(--accent);border-bottom-color:var(--accent)}
 .top h1{margin:0;font-size:18px;letter-spacing:.2px}
-.top .count{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.top .count{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .top .sp{flex:1}
 .link-btn{background:none;border:0;color:var(--muted);font-size:13px;padding:6px 4px}
 .link-btn.warn{color:var(--danger);font-weight:600}
@@ -129,6 +136,7 @@ main{padding:14px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(sa
     <h1>PindaiDok</h1>
     <span class="count" id="count">0 halaman</span>
     <span class="sp"></span>
+    <button class="theme-btn" id="btnTheme" aria-label="Ganti tema tampilan"></button>
     <button class="link-btn" id="btnClear" hidden>Hapus semua</button>
   </div>
   <nav class="tabs"><a href="./" aria-current="page">Scan</a><a href="edit.html">Edit PDF</a><a href="riwayat.html">Riwayat</a></nav>

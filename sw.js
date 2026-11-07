@@ -1,6 +1,6 @@
 // PindaiDok service worker — offline-first.
 // Naikkan VERSI setiap kali file aplikasi diubah agar pengguna mendapat versi baru.
-const VERSI = 'pindaidok-v4';
+const VERSI = 'pindaidok-v5';
 const SHELL = ['./', './index.html', './edit.html', './riwayat.html', './common.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
                './vendor/jspdf.umd.min.js', './vendor/jszip.min.js',
                './vendor/pdf.min.js', './vendor/pdf.worker.min.js', './vendor/pdf-lib.min.js'];

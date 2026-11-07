@@ -127,6 +127,14 @@ textarea{width:100%;min-height:90px;padding:10px 12px;border:1px solid var(--lin
 .saved button{flex:none;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px;height:64px;width:120px}
 .saved img{max-width:100%;max-height:100%}
 
+.tseg{position:absolute;border:1.5px dashed #1d74e8;background:rgba(29,116,232,.08);border-radius:2px;cursor:pointer}
+.obj.r{cursor:pointer;overflow:visible}
+.obj.r span{position:absolute;left:0;white-space:pre;line-height:1}
+.chip[aria-pressed="true"]{background:#e8edf2;color:#0c1015;border-color:#e8edf2;font-weight:600}
+.stepper{display:flex;align-items:center;gap:10px}
+.stepper button{width:48px;height:40px;border:1px solid var(--line);background:var(--surface);border-radius:8px;font-weight:700}
+.stepper b{font:700 15px var(--mono);min-width:64px;text-align:center}
+.swatch .asli{font-size:11px;font-weight:700;background:var(--bg);color:var(--ink)}
 .toolrow{display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 14px}
 .toolrow button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 12px;font-size:13px;color:var(--ink)}
 .toolrow svg.i{width:16px;height:16px}
@@ -211,6 +219,7 @@ textarea{width:100%;min-height:90px;padding:10px 12px;border:1px solid var(--lin
   <div class="stage" id="stage"><div class="paper" id="paper"><canvas id="pcv"></canvas><div class="layer" id="layer"></div><div class="fields" id="fields"></div></div></div>
   <div class="ed-hint" id="edHint">Tambahkan teks, tanda tangan, atau gambar. Geser untuk memindah, tarik bulatan biru untuk mengubah ukuran.</div>
   <div class="ed-tools" id="edTools">
+    <button class="chip" id="tFix" aria-pressed="false" hidden><svg class="i" viewBox="0 0 24 24"><path d="M4 7V5h10v2M9 5v14M6 19h6M14 13l3-3 3 3-5 5h-3v-3z"/></svg>Edit teks asli</button>
     <button class="chip" id="tText"><svg class="i" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>Teks</button>
     <button class="chip" id="tSig"><svg class="i" viewBox="0 0 24 24"><path d="M3 17c3-6 5-10 7-10s-1 9 2 9 3-4 5-4 2 3 4 3M3 21h18"/></svg>Tanda tangan</button>
     <button class="chip" id="tStamp"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="12" width="18" height="6" rx="1"/><path d="M9 12V8a3 3 0 1 1 6 0v4M3 21h18"/></svg>Stempel</button>
@@ -233,6 +242,30 @@ textarea{width:100%;min-height:90px;padding:10px 12px;border:1px solid var(--lin
       <div class="swatch" id="txColor"><button data-v="#111111" style="background:#111111" aria-label="Hitam"></button><button data-v="#1a3fb5" style="background:#1a3fb5" aria-label="Biru"></button><button data-v="#c0392b" style="background:#c0392b" aria-label="Merah"></button></div>
     </div>
     <div class="row"><button class="btn" id="txCancel">Batal</button><button class="btn primary" id="txOk">Pakai</button></div>
+  </div>
+</div>
+
+<!-- Lembar edit teks asli -->
+<div class="scrim" id="reSheet" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="reTitle">
+    <h2 id="reTitle">Edit teks</h2>
+    <p class="note" id="reOrig"></p>
+    <textarea id="reVal" style="min-height:70px"></textarea>
+    <div class="field"><span>Jenis huruf</span>
+      <div class="seg" id="reFam"><button data-v="Helvetica" style="font-family:Helvetica,Arial,sans-serif">Arial / Helvetica</button><button data-v="TimesRoman" style="font-family:'Times New Roman',Times,serif">Times New Roman</button><button data-v="Courier" style="font-family:'Courier New',monospace">Courier</button></div>
+    </div>
+    <div class="field"><span>Perataan</span>
+      <div class="seg" id="reAlign"><button data-v="l">Kiri</button><button data-v="c">Tengah</button><button data-v="r">Kanan</button></div>
+    </div>
+    <div class="field"><span>Ukuran huruf</span>
+      <div class="stepper"><button id="reMinus" aria-label="Perkecil">A−</button><b id="reSize">12 pt</b><button id="rePlus" aria-label="Perbesar">A+</button>
+        <label class="check" style="margin-left:auto"><input type="checkbox" id="reBold"><span>Tebal</span></label></div>
+    </div>
+    <div class="field"><span>Warna teks</span>
+      <div class="swatch" id="reColor"><button data-v="asli" class="asli" aria-label="Sama seperti asli">asli</button><button data-v="#111111" style="background:#111111" aria-label="Hitam"></button><button data-v="#1a3fb5" style="background:#1a3fb5" aria-label="Biru"></button><button data-v="#c0392b" style="background:#c0392b" aria-label="Merah"></button></div>
+    </div>
+    <div class="row"><button class="btn" id="reDel">Hapus teks ini</button></div>
+    <div class="row"><button class="btn" id="reCancel">Batal</button><button class="btn primary" id="reOk">Pakai</button></div>
   </div>
 </div>
 
@@ -494,6 +527,18 @@ async function cardAction(b,it){
   } else return;
   changed(); render();
 }
+/* Jenis huruf: teks yang diedit memakai fon standar PDF yang paling mirip dengan aslinya */
+const FONTS={ Helvetica:{css:'Helvetica, Arial, "Liberation Sans", sans-serif', std:'Helvetica'}, HelveticaBold:{css:'Helvetica, Arial, "Liberation Sans", sans-serif', std:'HelveticaBold', bold:true},
+  TimesRoman:{css:'"Times New Roman", Times, "Liberation Serif", serif', std:'TimesRoman'}, TimesRomanBold:{css:'"Times New Roman", Times, "Liberation Serif", serif', std:'TimesRomanBold', bold:true},
+  Courier:{css:'"Courier New", Courier, monospace', std:'Courier'}, CourierBold:{css:'"Courier New", Courier, monospace', std:'CourierBold', bold:true} };
+function fontKey(name, family, bold){
+  const n=(name||'')+' '+(family||''); const b=bold===undefined ? /bold|black|heavy|semibold|demi/i.test(n) : bold;
+  let base='Helvetica';
+  if (/courier|mono/i.test(n)) base='Courier';
+  else if (/times|roman|georgia|garamond|cambria|bookman|serif/i.test(n) && !/sans/i.test(n)) base='TimesRoman';
+  return b ? base+'Bold' : base;
+}
+const cssFont=(k,px)=>`${FONTS[k].bold?'bold ':''}${px}px ${FONTS[k].css}`;
 /* Ukuran kotak teks (pecahan halaman) diukur dengan canvas */
 const measureCtx = document.createElement('canvas').getContext('2d');
 function textBox(o, W, H){
@@ -503,6 +548,7 @@ function textBox(o, W, H){
 }
 /* Putar halaman 90° searah jarum jam. Isian tetap tegak, posisinya ikut berpindah bersama halaman. */
 function rotateItem(it){
+  if (it.ann.some(o=>o.type==='r')){ toast('Halaman dengan teks asli yang diedit tidak bisa diputar. Putar dulu, baru edit teksnya.', 5000); return; }
   const S0=finalSize(it), S1={w:S0.h, h:S0.w};
   it.ann.forEach(o=>{
     const b = o.type==='i' ? {w:o.w, h:o.h} : textBox(o, S0.w, S0.h);
@@ -565,6 +611,11 @@ function rotateCanvas(src, r){
 async function drawAnnToCanvas(c, ann){
   const x=c.getContext('2d'), W=c.width, H=c.height;
   for (const o of ann){
+    if (o.type==='r'){
+      x.fillStyle=o.bg; x.fillRect(o.x*W, o.y*H, o.w*W, o.h*H);
+      if (o.text){ x.fillStyle=o.color; x.font=cssFont(o.font, o.fs*H); x.textBaseline='alphabetic'; x.fillText(o.text, o.tx*W, o.base*H); }
+      continue;
+    }
     if (o.type==='t'){
       const fs=o.fs*H; x.fillStyle=o.color; x.font=`${fs}px Helvetica, Arial, sans-serif`; x.textBaseline='alphabetic';
       o.text.split('\n').forEach((ln,i)=>x.fillText(ln, o.x*W, o.y*H+(i*1.2+0.947)*fs));
@@ -607,6 +658,7 @@ async function openEditor(it){
         (a.fieldType==='Tx' || (a.fieldType==='Btn' && a.checkBox) || (a.fieldType==='Ch' && a.combo)));
     }catch(e){ ed.widgets=[]; }
   }
+  ed.fix=false; ed.segs=[]; $('tFix').setAttribute('aria-pressed','false'); $('tFix').hidden = src.kind!=='pdf';
   $('edHint').textContent = ed.widgets.length
     ? `Halaman ini punya ${ed.widgets.length} kolom isian. Ketuk kotak biru untuk mengisi. Bisa juga tambah teks, tanda tangan, atau stempel.`
     : 'Tambahkan teks, tanda tangan, stempel, atau gambar. Geser untuk memindah, tarik bulatan biru untuk mengubah ukuran.';
@@ -630,6 +682,89 @@ async function layoutEditor(redraw){
   }
   drawObjects(); drawFields();
 }
+/* Baris teks asli halaman (pdf.js), dalam pecahan ukuran halaman tegak */
+async function loadSegments(){
+  const it=ed.it, S=finalSize(it), vp=ed.pg.getViewport({scale:1, rotation:(ed.pg.rotate+it.rot*90)%360});
+  const tc=await ed.pg.getTextContent(), P=[];
+  for (const t of tc.items){
+    if (!t.str) continue;
+    const m=pdfjsLib.Util.transform(vp.transform, t.transform), fs=Math.hypot(m[2],m[3]);
+    if (!(m[0]>0) || Math.abs(m[1])>0.02*m[0] || Math.abs(m[2])>0.02*fs || fs<2) continue;   // hanya teks mendatar
+    let real=''; try{ if (ed.pg.commonObjs.has(t.fontName)) real=ed.pg.commonObjs.get(t.fontName).name||''; }catch(e){}
+    P.push({str:t.str, x:m[4], base:m[5], w:t.width, fs, font:fontKey(real, (tc.styles[t.fontName]||{}).fontFamily)});
+  }
+  P.sort((a,b)=>Math.abs(a.base-b.base)<Math.min(a.fs,b.fs)*0.3 ? a.x-b.x : a.base-b.base);
+  const segs=[];
+  for (const p of P){
+    const L=segs[segs.length-1];
+    if (L && Math.abs(L.base-p.base)<Math.min(L.fs,p.fs)*0.3 && p.x-L.x1 < L.fs*1.2){
+      if (p.x-L.x1 > L.fs*0.15 && !/\s$/.test(L.text) && !/^\s/.test(p.str)) L.text+=' ';
+      L.text+=p.str; L.x1=Math.max(L.x1, p.x+p.w);
+    } else if (p.str.trim()) segs.push({text:p.str, x0:p.x, x1:p.x+p.w, base:p.base, fs:p.fs, font:p.font});
+  }
+  ed.segs=segs.filter(g=>g.text.trim()).map((g,i)=>({align: Math.abs((g.x0+g.x1)/2-S.w/2)<S.w*0.02 && g.x0>S.w*0.2 ? 'c' : (g.x0>S.w*0.5 && S.w-g.x1<S.w*0.2 && g.x1-g.x0<S.w*0.45 ? 'r' : 'l'), key:`${Math.round(g.x0)}:${Math.round(g.base)}`, text:g.text.replace(/\s+$/,''), font:g.font,
+    x:(g.x0-g.fs*0.06)/S.w, y:(g.base-g.fs*0.92)/S.h, w:(g.x1-g.x0+g.fs*0.12)/S.w, h:(g.fs*1.18)/S.h, tx:g.x0/S.w, base:g.base/S.h, fs:g.fs/S.h}));
+}
+/* Ambil warna teks & latar dari gambar halaman di editor */
+function sampleColors(box){
+  const c=$('pcv'), x=c.getContext('2d',{willReadFrequently:true}), sx=c.width, sy=c.height;
+  const X=Math.max(0,Math.floor(box.x*sx)), Y=Math.max(0,Math.floor(box.y*sy)), Wd=Math.max(1,Math.min(sx-X,Math.ceil(box.w*sx))), Hd=Math.max(1,Math.min(sy-Y,Math.ceil(box.h*sy)));
+  const ring=[], d=x.getImageData(Math.max(0,X-3),Math.max(0,Y-3),Math.min(sx,Wd+6),Math.min(sy,Hd+6)), dw=d.width, dh=d.height;
+  for (let i=0;i<dw;i++){ ring.push(i, i+(dh-1)*dw); } for (let j=0;j<dh;j++){ ring.push(j*dw, j*dw+dw-1); }
+  const px=i=>[d.data[i*4],d.data[i*4+1],d.data[i*4+2]], lum=c=>0.299*c[0]+0.587*c[1]+0.114*c[2];
+  const rc=ring.map(px).sort((a,b)=>lum(a)-lum(b)), bg=rc[Math.floor(rc.length*0.6)];
+  const inner=x.getImageData(X,Y,Wd,Hd).data; let dk=null, dl=1e9;
+  for (let i=0;i<inner.length;i+=4){ const l=0.299*inner[i]+0.587*inner[i+1]+0.114*inner[i+2]; if (l<dl){ dl=l; dk=[inner[i],inner[i+1],inner[i+2]]; } }
+  const hex=c=>'#'+c.map(v=>v.toString(16).padStart(2,'0')).join('');
+  return {bg:hex(bg), color: dk && lum(bg)-dl>60 ? hex(dk) : '#111111'};
+}
+$('tFix').onclick=async()=>{
+  ed.fix=!ed.fix; $('tFix').setAttribute('aria-pressed', String(ed.fix)); ed.sel=null;
+  if (ed.fix && !ed.segs.length){
+    try{ await loadSegments(); }catch(e){ ed.segs=[]; }
+    if (!ed.segs.length){ ed.fix=false; $('tFix').setAttribute('aria-pressed','false');
+      toast('Tidak ada teks yang bisa diedit di halaman ini. Kalau ini hasil scan/foto, pakai Teks untuk menimpa.', 5500); }
+  }
+  $('edHint').textContent = ed.fix ? 'Ketuk kotak biru pada teks yang ingin diubah. Ketuk lagi "Edit teks asli" untuk selesai.' : 'Tambahkan teks, tanda tangan, stempel, atau gambar.';
+  drawObjects();
+};
+/* Lembar edit teks */
+let re={o:null, seg:null, fs:0, bold:false, color:'asli', orig:null, fam:'Helvetica', align:'l'};
+function openRe(o, seg){
+  re.o=o||null; re.seg=seg||null;
+  const src=o||seg; re.fs=src.fs; re.bold=FONTS[src.font].bold; re.color=o&&o.colorSet?o.color:'asli'; re.fam=src.font.replace('Bold',''); re.align=src.align||'l';
+  re.orig = o ? o.orig : seg.text;
+  $('reOrig').textContent=`Teks asli: “${re.orig}”`; $('reVal').value = o ? o.text : seg.text;
+  syncRe(); $('reSheet').hidden=false; setTimeout(()=>{ const t=$('reVal'); t.focus(); t.setSelectionRange(t.value.length,t.value.length); },50);
+}
+function syncRe(){
+  $('reSize').textContent=(re.fs*finalSize(ed.it).h).toFixed(1).replace('.',',')+' pt'; $('reBold').checked=re.bold;
+  document.querySelectorAll('#reColor button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===re.color));
+  document.querySelectorAll('#reFam button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===re.fam));
+  document.querySelectorAll('#reAlign button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===re.align));
+}
+document.querySelectorAll('#reFam button').forEach(b=>b.onclick=()=>{ re.fam=b.dataset.v; syncRe(); });
+document.querySelectorAll('#reAlign button').forEach(b=>b.onclick=()=>{ re.align=b.dataset.v; syncRe(); });
+$('reMinus').onclick=()=>{ re.fs*=0.92; syncRe(); };
+$('rePlus').onclick=()=>{ re.fs*=1.08; syncRe(); };
+$('reBold').onchange=e=>{ re.bold=e.target.checked; };
+document.querySelectorAll('#reColor button').forEach(b=>b.onclick=()=>{ re.color=b.dataset.v; syncRe(); });
+$('reCancel').onclick=()=>$('reSheet').hidden=true;
+function applyRe(text){
+  const font = re.bold ? re.fam+'Bold' : re.fam, col=sampleColors(re.o||re.seg), S=finalSize(ed.it);
+  // kotak & garis acuan teks asli (tetap disimpan agar bisa diedit ulang)
+  const o=re.o || {id:uid(), type:'r', key:re.seg.key, orig:re.seg.text, ox:re.seg.x, ow:re.seg.w, otx:re.seg.tx, y:re.seg.y, h:re.seg.h, base:re.seg.base, bg:col.bg, origColor:col.color};
+  const pad=o.otx-o.ox;
+  measureCtx.font=cssFont(font, 1000); const tw=(measureCtx.measureText(text).width/1000)*re.fs*S.h/S.w;
+  const L=o.otx, R=o.ox+o.ow-pad, C=(L+R)/2;
+  const tx = re.align==='c' ? C-tw/2 : re.align==='r' ? R-tw : L;
+  o.x=Math.min(o.ox, tx-pad); o.w=Math.max(o.ox+o.ow, tx+tw+pad)-o.x; o.tx=tx;
+  Object.assign(o,{text, fs:re.fs, font, align:re.align, color: re.color==='asli' ? (o.origColor||col.color) : re.color, colorSet: re.color!=='asli'});
+  if (!re.o) ed.ann.push(o);
+  ed.sel=null; $('reSheet').hidden=true; drawObjects();
+}
+$('reOk').onclick=()=>applyRe($('reVal').value.replace(/\n+/g,' ').trimEnd());
+$('reDel').onclick=()=>applyRe('');
 window.addEventListener('resize', ()=>{ if (ed.it) layoutEditor(false); });
 /* Kotak isian formulir PDF di atas halaman */
 function drawFields(){
@@ -662,7 +797,19 @@ function drawFields(){
 }
 function drawObjects(){
   const L=$('layer'); L.innerHTML='';
+  if (ed.fix){
+    const done=new Set(ed.ann.filter(o=>o.type==='r').map(o=>o.key));
+    ed.segs.forEach(g=>{ if (done.has(g.key)) return; const b=document.createElement('div'); b.className='tseg';
+      Object.assign(b.style,{left:g.x*ed.W+'px', top:g.y*ed.H+'px', width:g.w*ed.W+'px', height:g.h*ed.H+'px'}); b.onclick=()=>openRe(null,g); L.appendChild(b); });
+  }
   ed.ann.forEach(o=>{
+    if (o.type==='r'){
+      const d=document.createElement('div'); d.className='obj r'+(ed.sel===o.id?' on':''); d.dataset.id=o.id;
+      Object.assign(d.style,{left:o.x*ed.W+'px', top:o.y*ed.H+'px', width:o.w*ed.W+'px', height:o.h*ed.H+'px', background:o.bg});
+      if (o.text){ const sp=document.createElement('span'); sp.textContent=o.text; const fpx=o.fs*ed.H;
+        Object.assign(sp.style,{font:cssFont(o.font,fpx), color:o.color, left:(o.tx-o.x)*ed.W+'px', top:((o.base-o.y)*ed.H - 0.845*fpx)+'px'}); d.appendChild(sp); }
+      L.appendChild(d); return;
+    }
     const d=document.createElement('div'); d.className='obj'+(o.type==='t'?' t':'')+(ed.sel===o.id?' on':''); d.dataset.id=o.id;
     d.style.left=o.x*ed.W+'px'; d.style.top=o.y*ed.H+'px';
     if (o.type==='t'){ d.textContent=o.text; d.style.fontSize=o.fs*ed.H+'px'; d.style.color=o.color; }
@@ -673,12 +820,14 @@ function drawObjects(){
   });
   const s=ed.ann.find(o=>o.id===ed.sel);
   $('tEdit').hidden = !(s && s.type==='t'); $('tDel').hidden = !s;
+  if (s && s.type==='r') $('tDel').lastChild.textContent='Kembalikan teks asli'; else $('tDel').lastChild.textContent='Hapus objek';
 }
 let drag=null;
 $('layer').addEventListener('pointerdown', e=>{
   const el=e.target.closest('.obj');
   if (!el){ ed.sel=null; drawObjects(); return; }
   const o=ed.ann.find(a=>a.id===el.dataset.id); ed.sel=o.id;
+  if (o.type==='r'){ drawObjects(); openRe(o,null); e.preventDefault(); return; }
   drag={o, mode:e.target.classList.contains('rz')?'rz':'mv', sx:e.clientX, sy:e.clientY, o0:{...o}};
   $('layer').setPointerCapture(e.pointerId); drawObjects(); e.preventDefault();
 });
@@ -817,7 +966,16 @@ function hexRgb(h){ return rgb(parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3
 function winAnsiSafe(font, s){ let o=''; for (const ch of s){ try{ font.encodeText(ch); o+=ch; }catch(e){ o+= ch==='’'||ch==='‘' ? "'" : '?'; } } return o; }
 async function drawAnn(out, page, ann, font){
   const W=page.getWidth(), H=page.getHeight();
+  out._fonts = out._fonts || {};
   for (const o of ann){
+    if (o.type==='r'){
+      page.drawRectangle({x:o.x*W, y:H-(o.y+o.h)*H, width:o.w*W, height:o.h*H, color:hexRgb(o.bg), borderWidth:0});
+      if (o.text){
+        const k=o.font||'Helvetica'; if (!out._fonts[k]) out._fonts[k]=await out.embedFont(StandardFonts[FONTS[k].std]);
+        const f=out._fonts[k]; page.drawText(winAnsiSafe(f,o.text), {x:o.tx*W, y:H-o.base*H, size:o.fs*H, font:f, color:hexRgb(o.color)});
+      }
+      continue;
+    }
     if (o.type==='t'){
       const size=o.fs*H;
       o.text.split('\n').forEach((ln,i)=>{ if (!ln) return; page.drawText(winAnsiSafe(font,ln), {x:o.x*W, y:H-(o.y*H+(i*1.2+0.947)*size), size, font, color:hexRgb(o.color)}); });

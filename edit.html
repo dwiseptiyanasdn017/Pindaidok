@@ -1,0 +1,968 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PindaiDok — Edit PDF</title>
+<meta name="theme-color" content="#1d5fa8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+/* Layout: sama dengan halaman Scan — bilah atas + tab, grid halaman, bilah aksi bawah; editor anotasi layar penuh gelap */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --ink:#15202b; --muted:#5a6876; --line:#d5dbe2;
+  --accent:#1d5fa8; --accent-ink:#ffffff; --accent-soft:#e3edf8; --danger:#b42318;
+  --stage:#0c1015; --stage-ink:#e8edf2;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+  --mono:ui-monospace,"SF Mono","Roboto Mono",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1419; --surface:#18202a; --ink:#e6ebf0; --muted:#94a2b1; --line:#2b3644;
+  --accent:#5d9ce2; --accent-ink:#0b1420; --accent-soft:#1b2a3c; --danger:#f97066; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--font);-webkit-tap-highlight-color:transparent;padding-top:env(safe-area-inset-top,0px)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+svg.i{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);
+  padding:10px max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.top-row{display:flex;align-items:center;gap:12px}
+.top h1{margin:0;font-size:18px}
+.count{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.sp{flex:1}
+.link-btn{background:none;border:0;color:var(--muted);font-size:13px;padding:6px 4px}
+.link-btn.warn{color:var(--danger);font-weight:600}
+.tabs{display:flex;gap:4px;margin-top:8px}
+.tabs a{flex:1;text-align:center;padding:9px 0 10px;color:var(--muted);text-decoration:none;font-weight:600;border-bottom:3px solid transparent}
+.tabs a[aria-current="page"]{color:var(--accent);border-bottom-color:var(--accent)}
+
+main{padding:14px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(safe-area-inset-left,0px))}
+.addrow{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.addrow .btn{flex:1 1 150px}
+.selbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--accent-soft);color:var(--accent);border-radius:10px;padding:8px 10px;margin-bottom:12px;font-weight:600}
+.selbar .sp{flex:1}
+.selbar button{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--ink);font-size:14px;font-weight:500}
+.empty{border:1.5px dashed var(--line);border-radius:12px;padding:26px 18px;color:var(--muted);background:var(--surface)}
+.empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:6px;text-align:center}
+.empty ul{margin:10px auto 0;padding-left:20px;max-width:360px}
+
+.grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.card.sel{outline:3px solid var(--accent);outline-offset:-1px}
+.thumb{position:relative;aspect-ratio:210/297;background:#e9edf1;border:0;padding:0;display:flex;align-items:center;justify-content:center;width:100%}
+.thumb img{max-width:100%;max-height:100%;display:block;box-shadow:0 1px 4px rgba(0,0,0,.25);background:#fff}
+.no{position:absolute;left:6px;top:6px;background:var(--ink);color:var(--bg);font:600 12px/1 var(--mono);padding:4px 6px;border-radius:4px}
+.badge{position:absolute;left:6px;bottom:6px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:700;padding:3px 6px;border-radius:4px}
+.pick{position:absolute;right:4px;top:4px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:0;background:none;padding:0}
+.pick span{width:24px;height:24px;border-radius:6px;border:2px solid #fff;background:rgba(0,0,0,.28);box-shadow:0 0 0 1px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff}
+.card.sel .pick span{background:var(--accent);border-color:var(--accent)}
+.src{font-size:11px;color:var(--muted);padding:5px 8px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tools{display:flex;border-top:1px solid var(--line);margin-top:5px}
+.tools button{flex:1;background:none;border:0;padding:9px 0;display:flex;justify-content:center;color:var(--muted)}
+.tools button:disabled{opacity:.3}
+.tools button.armed{color:#fff;background:var(--danger)}
+
+.actions{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);display:flex;gap:10px;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;border:1px solid var(--line);background:var(--surface);padding:12px 14px;font-weight:600;min-height:48px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.45;cursor:default}
+.actions .btn{flex:1}
+
+/* Editor anotasi */
+.editor{position:fixed;inset:0;z-index:20;background:var(--stage);color:var(--stage-ink);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.ed-head{display:flex;align-items:center;gap:10px;padding:10px max(14px,env(safe-area-inset-right,0px)) 10px max(14px,env(safe-area-inset-left,0px))}
+.ed-head .title{flex:1;font-weight:600}
+.ghost{background:none;border:1px solid #3a4553;color:var(--stage-ink);border-radius:8px;padding:8px 12px}
+.ghost.ok{background:#5d9ce2;border-color:#5d9ce2;color:#0b1420;font-weight:700}
+.stage{flex:1;position:relative;min-height:0;overflow:hidden}
+.paper{position:absolute;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.5)}
+.paper canvas{position:absolute;inset:0;width:100%;height:100%}
+.layer{position:absolute;inset:0;touch-action:none}
+.obj{position:absolute;touch-action:none;user-select:none;-webkit-user-select:none;cursor:move}
+.obj.t{white-space:pre;line-height:1.2;font-family:Helvetica,Arial,"Liberation Sans",sans-serif}
+.obj img{display:block;width:100%;height:100%;pointer-events:none}
+.obj.on{outline:2px dashed #1d74e8;outline-offset:3px}
+.obj .rz{position:absolute;right:-16px;bottom:-16px;width:28px;height:28px;border-radius:50%;background:#1d74e8;border:3px solid #fff;display:none}
+.obj.on .rz{display:block}
+.ed-hint{text-align:center;font-size:12px;opacity:.7;padding:6px 14px 0}
+.ed-tools{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;padding:10px max(14px,env(safe-area-inset-right,0px)) 12px max(14px,env(safe-area-inset-left,0px))}
+.chip{flex:none;border:1px solid #3a4553;background:#18202a;color:var(--stage-ink);border-radius:999px;padding:9px 14px;display:inline-flex;align-items:center;gap:6px;font-size:14px}
+.chip.danger{border-color:#7a2b26;color:#ffb4ab}
+
+/* Lembar bawah */
+.scrim{position:fixed;inset:0;z-index:30;background:rgba(5,10,15,.5);display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);color:var(--ink);width:100%;max-width:560px;max-height:92%;overflow-y:auto;border-radius:16px 16px 0 0;display:flex;flex-direction:column;gap:14px;
+  padding:18px max(18px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px))}
+.sheet h2{margin:0;font-size:17px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field>span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;background:var(--surface);border:0;padding:9px 4px;font-size:14px;border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.seg button:disabled{opacity:.4}
+.seg small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+.seg .sz{font:600 12px/1.3 var(--mono);color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums}
+.seg button[aria-pressed="true"] .sz{color:var(--accent)}
+.check{display:flex;align-items:flex-start;gap:10px;font-size:14px}
+.check input{width:20px;height:20px;accent-color:var(--accent);flex:none;margin:0}
+.size-box{margin:0;padding:10px 12px;border-radius:10px;background:var(--bg);font-size:14px}
+.size-box b{font:700 16px var(--mono);font-variant-numeric:tabular-nums}
+.size-box span{font-size:12px;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);margin:0}
+.sheet .row{display:flex;gap:10px}
+.sheet .row .btn{flex:1}
+textarea{width:100%;min-height:90px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:16px/1.4 var(--font);resize:vertical}
+.swatch{display:flex;gap:10px}
+.swatch button{width:38px;height:38px;border-radius:50%;border:3px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
+.swatch button[aria-pressed="true"]{box-shadow:0 0 0 3px var(--accent)}
+.sigpad{width:100%;aspect-ratio:2/1;background:#fff;border:1px solid var(--line);border-radius:10px;touch-action:none;display:block}
+.saved{display:flex;gap:10px;overflow-x:auto}
+.saved button{flex:none;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px;height:64px;width:120px}
+.saved img{max-width:100%;max-height:100%}
+
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:70;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px);box-shadow:0 4px 18px rgba(0,0,0,.25)}
+.busy{position:fixed;inset:0;z-index:60;background:rgba(5,10,15,.62);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;text-align:center;padding:24px;white-space:pre-line}
+.spin{width:38px;height:38px;border-radius:50%;border:4px solid rgba(255,255,255,.25);border-top-color:#fff;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <h1>PindaiDok</h1>
+    <span class="count" id="count">0 halaman</span>
+    <span class="sp"></span>
+    <button class="link-btn" id="btnClear" hidden>Kosongkan</button>
+  </div>
+  <nav class="tabs"><a href="./">Scan</a><a href="edit.html" aria-current="page">Edit PDF</a></nav>
+</header>
+
+<main>
+  <div class="addrow">
+    <button class="btn primary" id="btnAdd"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Tambah PDF / gambar</button>
+    <button class="btn" id="btnScan"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg><span id="scanLbl">Ambil hasil scan</span></button>
+  </div>
+  <div class="selbar" id="selbar" hidden>
+    <span id="selInfo">0 dipilih</span><span class="sp"></span>
+    <button id="selAll">Pilih semua</button>
+    <button id="selRot">Putar</button>
+    <button id="selDel">Hapus</button>
+    <button id="selNone">Batal</button>
+  </div>
+  <div class="empty" id="empty">
+    <b>Belum ada halaman</b>
+    <ul>
+      <li><strong>Gabung</strong>: tambahkan beberapa PDF/gambar, atur urutan, lalu ekspor.</li>
+      <li><strong>Pisah / ambil halaman</strong>: centang halaman, ekspor “Hanya yang dipilih” atau “Per halaman”.</li>
+      <li><strong>Tanda tangan, teks, stempel</strong>: ketuk halaman untuk menulis di atasnya.</li>
+      <li><strong>Kompres</strong> dan <strong>PDF ke Word</strong> ada di menu Ekspor.</li>
+    </ul>
+  </div>
+  <ol class="grid" id="grid"></ol>
+</main>
+
+<nav class="actions">
+  <button class="btn" id="btnAdd2"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Tambah</button>
+  <button class="btn primary" id="btnExport" disabled><svg class="i" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Ekspor</button>
+</nav>
+
+<input type="file" id="inFile" accept="application/pdf,.pdf,image/*" multiple hidden>
+<input type="file" id="inImg" accept="image/*" hidden>
+
+<!-- Editor anotasi -->
+<section class="editor" id="editor" hidden aria-label="Tulis di halaman">
+  <div class="ed-head">
+    <button class="ghost" id="edCancel">Batal</button>
+    <div class="title" id="edTitle">Halaman</div>
+    <button class="ghost ok" id="edDone">Selesai</button>
+  </div>
+  <div class="stage" id="stage"><div class="paper" id="paper"><canvas id="pcv"></canvas><div class="layer" id="layer"></div></div></div>
+  <div class="ed-hint" id="edHint">Tambahkan teks, tanda tangan, atau gambar. Geser untuk memindah, tarik bulatan biru untuk mengubah ukuran.</div>
+  <div class="ed-tools" id="edTools">
+    <button class="chip" id="tText"><svg class="i" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>Teks</button>
+    <button class="chip" id="tSig"><svg class="i" viewBox="0 0 24 24"><path d="M3 17c3-6 5-10 7-10s-1 9 2 9 3-4 5-4 2 3 4 3M3 21h18"/></svg>Tanda tangan</button>
+    <button class="chip" id="tImg"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/></svg>Gambar</button>
+    <button class="chip" id="tEdit" hidden><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Ubah teks</button>
+    <button class="chip danger" id="tDel" hidden><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Hapus objek</button>
+  </div>
+</section>
+
+<!-- Lembar teks -->
+<div class="scrim" id="textSheet" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="txTitle">
+    <h2 id="txTitle">Teks</h2>
+    <textarea id="txVal" placeholder="Ketik teks…"></textarea>
+    <button class="btn" id="txDate" type="button">Sisipkan tanggal hari ini</button>
+    <div class="field"><span>Ukuran huruf</span>
+      <div class="seg" id="txSize"><button data-v="0.012">Kecil</button><button data-v="0.0155">Sedang</button><button data-v="0.022">Besar</button><button data-v="0.032">Judul</button></div>
+    </div>
+    <div class="field"><span>Warna</span>
+      <div class="swatch" id="txColor"><button data-v="#111111" style="background:#111111" aria-label="Hitam"></button><button data-v="#1a3fb5" style="background:#1a3fb5" aria-label="Biru"></button><button data-v="#c0392b" style="background:#c0392b" aria-label="Merah"></button></div>
+    </div>
+    <div class="row"><button class="btn" id="txCancel">Batal</button><button class="btn primary" id="txOk">Pakai</button></div>
+  </div>
+</div>
+
+<!-- Lembar tanda tangan -->
+<div class="scrim" id="sigSheet" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="sgTitle">
+    <h2 id="sgTitle">Tanda tangan</h2>
+    <div class="field" id="sgSavedWrap" hidden><span>Tersimpan — ketuk untuk memakai</span><div class="saved" id="sgSaved"></div></div>
+    <div class="field"><span>Buat baru — tanda tangan dengan jari di kotak putih</span><canvas class="sigpad" id="sgPad"></canvas></div>
+    <div class="swatch" id="sgColor"><button data-v="#111111" style="background:#111111" aria-label="Hitam"></button><button data-v="#1a3fb5" style="background:#1a3fb5" aria-label="Biru"></button></div>
+    <div class="row"><button class="btn" id="sgClear">Ulangi</button><button class="btn" id="sgCancel">Batal</button><button class="btn primary" id="sgOk">Pakai</button></div>
+  </div>
+</div>
+
+<!-- Lembar ekspor -->
+<div class="scrim" id="exportSheet" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="exTitle">
+    <h2 id="exTitle">Ekspor</h2>
+    <div class="field"><span>Nama file</span><input id="fname" style="padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit" autocomplete="off"></div>
+    <div class="field"><span>Halaman</span>
+      <div class="seg" id="segRange"><button data-v="all">Semua<small id="rAll"></small></button><button data-v="sel">Hanya yang dipilih<small id="rSel"></small></button></div>
+    </div>
+    <div class="field"><span>Hasil</span>
+      <div class="seg" id="segKind"><button data-v="pdf">PDF<small>1 file</small></button><button data-v="split">Per halaman<small>ZIP berisi PDF</small></button><button data-v="word">Word<small>.docx</small></button></div>
+    </div>
+    <div class="field" id="fQ"><span>Ukuran file</span>
+      <div class="seg" id="segQ">
+        <button data-v="asli">Asli<small>teks tetap</small><small class="sz">…</small></button>
+        <button data-v="kecil">Kecil<small>kirim WA</small><small class="sz">…</small></button>
+        <button data-v="sedang">Sedang<small>umum</small><small class="sz">…</small></button>
+        <button data-v="tinggi">Tinggi<small>cetak</small><small class="sz">…</small></button>
+      </div>
+      <p class="note" id="qNote">Kecil/Sedang/Tinggi mengubah halaman jadi gambar: ukuran turun, tapi teks tidak bisa diseleksi lagi.</p>
+    </div>
+    <div class="field" id="fWord" hidden><span>Jenis Word</span>
+      <div class="seg" id="segW"><button data-v="teks">Teks bisa diedit<small>tata letak disederhanakan</small></button><button data-v="persis">Tampilan persis<small>halaman jadi gambar</small></button></div>
+      <label class="check" id="ocrRow"><input type="checkbox" id="exOcr"><span>Baca teks dari halaman hasil scan/foto (OCR bahasa Indonesia). Lebih lambat, ±5–15 detik per halaman; saat pertama perlu unduhan ±5 MB.</span></label>
+    </div>
+    <p class="size-box" id="exSize" aria-live="polite">…</p>
+    <div class="row">
+      <button class="btn" id="exCancel">Tutup</button>
+      <button class="btn" id="exShare" hidden>Bagikan</button>
+      <button class="btn primary" id="exSave">Unduh</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<div class="busy" id="busy" hidden><div class="spin"></div><div id="busyText">Memproses…</div><button class="ghost" id="busyStop" hidden>Hentikan</button></div>
+
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script>
+'use strict';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+const {PDFDocument, StandardFonts, rgb, degrees} = PDFLib;
+const $ = id => document.getElementById(id);
+const A4 = {w:595.28, h:841.89};
+const QUALITY = { kecil:{side:1240,q:0.62}, sedang:{side:1754,q:0.78}, tinggi:{side:2400,q:0.88} };
+
+/* ====== Util ====== */
+function toast(m, ms=2800){ const t=$('toast'); t.textContent=m; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true, ms); }
+function busy(on, text, stoppable){ $('busy').hidden=!on; if (text) $('busyText').textContent=text; $('busyStop').hidden=!stoppable; }
+const tick = () => new Promise(r=>setTimeout(r, 20));
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+function canvas(w,h){ const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(w)); c.height=Math.max(1,Math.round(h)); return c; }
+function toBlob(c,t,q){ return new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('Gagal membuat gambar')),t,q)); }
+function fmtSize(n){ return n>1048576 ? (n/1048576).toFixed(1).replace('.',',')+' MB' : Math.max(1,Math.round(n/1024))+' KB'; }
+function safeName(s){ return (s||'Dokumen').trim().replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').slice(0,80) || 'Dokumen'; }
+const LS = { get(k,d){ try{ const v=localStorage.getItem('pe_'+k); return v==null?d:JSON.parse(v); }catch(e){ return d; } },
+             set(k,v){ try{ localStorage.setItem('pe_'+k, JSON.stringify(v)); }catch(e){} } };
+async function loadImage(blob){
+  if (window.createImageBitmap){ try{ return await createImageBitmap(blob,{imageOrientation:'from-image'}); }catch(e){} }
+  return await new Promise((res,rej)=>{ const u=URL.createObjectURL(blob), im=new Image(); im.onload=()=>{URL.revokeObjectURL(u);res(im);}; im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('Gambar tidak bisa dibuka'));}; im.src=u; });
+}
+function dataURLToBytes(d){ const b=atob(d.split(',')[1]); const u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
+function todayText(){ const B=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'], d=new Date(); return `${d.getDate()} ${B[d.getMonth()]} ${d.getFullYear()}`; }
+
+/* ====== Penyimpanan ruang kerja (IndexedDB) ====== */
+const DB = {
+  db:null,
+  open(){ return new Promise(res=>{ try{ const r=indexedDB.open('pindaidok-edit',1);
+    r.onupgradeneeded=()=>{ r.result.createObjectStore('sources',{keyPath:'id'}); r.result.createObjectStore('state'); };
+    r.onsuccess=()=>{ this.db=r.result; res(true); }; r.onerror=()=>res(false); }catch(e){ res(false); } }); },
+  req(r){ return new Promise((res,rej)=>{ r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); },
+  async putSource(s){ if(!this.db) return; try{ await this.req(this.db.transaction('sources','readwrite').objectStore('sources').put({id:s.id,kind:s.kind,name:s.name,blob:s.blob})); }catch(e){ console.warn(e); } },
+  async delSource(id){ if(!this.db) return; try{ await this.req(this.db.transaction('sources','readwrite').objectStore('sources').delete(id)); }catch(e){} },
+  async sources(){ if(!this.db) return []; try{ return await this.req(this.db.transaction('sources').objectStore('sources').getAll()); }catch(e){ return []; } },
+  async putItems(items){ if(!this.db) return; try{ await this.req(this.db.transaction('state','readwrite').objectStore('state').put(items,'items')); }catch(e){ console.warn(e); } },
+  async items(){ if(!this.db) return null; try{ return await this.req(this.db.transaction('state').objectStore('state').get('items')); }catch(e){ return null; } },
+  async clear(){ if(!this.db) return; try{ const t=this.db.transaction(['sources','state'],'readwrite'); t.objectStore('sources').clear(); t.objectStore('state').clear(); await new Promise(r=>t.oncomplete=r); }catch(e){} }
+};
+
+/* ====== Model ======
+   source: {id, kind:'pdf'|'img', name, blob}  (+ runtime: js = dokumen pdf.js, lib = dokumen pdf-lib, img = bitmap)
+   item (halaman): {id, src, idx, rot (0-3, tambahan searah jarum jam), ann:[objek], w, h (ukuran pt sebelum rot tambahan)}
+   objek: teks {id,type:'t',x,y,fs,color,text} | gambar {id,type:'i',x,y,w,h,data}  — koordinat pecahan 0..1 dari halaman tegak */
+const sources = new Map();
+let items = [];
+let selected = new Set();
+let rev = 0;           // naik setiap ada perubahan, untuk membatalkan cache ekspor
+const thumbs = new Map(); // id → {key, url}
+
+let saveT=null;
+function changed(){ rev++; clearTimeout(saveT); saveT=setTimeout(()=>DB.putItems(items.map(({id,src,idx,rot,ann,w,h})=>({id,src,idx,rot,ann,w,h}))), 400); }
+
+async function jsDoc(s){
+  if (!s.js){
+    const data = new Uint8Array(await s.blob.arrayBuffer());
+    s.js = await pdfjsLib.getDocument({data, isEvalSupported:false}).promise;
+  }
+  return s.js;
+}
+async function libDoc(s){
+  if (!s.lib) s.lib = await PDFDocument.load(await s.blob.arrayBuffer(), {ignoreEncryption:true});
+  return s.lib;
+}
+async function imgOf(s){ if (!s.img) s.img = await loadImage(s.blob); return s.img; }
+
+function finalSize(it){ return it.rot%2 ? {w:it.h, h:it.w} : {w:it.w, h:it.h}; }
+
+/* ====== Menambah file ====== */
+async function addFiles(files){
+  files = Array.from(files||[]); if (!files.length) return;
+  let added=0, failed=[];
+  for (let n=0;n<files.length;n++){
+    const f=files[n];
+    busy(true, `Membuka ${f.name}…\n(${n+1} dari ${files.length})`); await tick();
+    try{
+      const isPdf = f.type==='application/pdf' || /\.pdf$/i.test(f.name);
+      if (!isPdf && !(f.type||'').startsWith('image/') && !/\.(jpe?g|png|webp)$/i.test(f.name)) throw new Error('bukan PDF/gambar');
+      const s = {id:uid(), kind:isPdf?'pdf':'img', name:f.name.replace(/\.[^.]+$/,''), blob:f};
+      if (isPdf){
+        let d;
+        try{ d = await jsDoc(s); }
+        catch(e){ if (e && e.name==='PasswordException') throw new Error('PDF dikunci kata sandi'); throw new Error('PDF rusak atau tidak didukung'); }
+        for (let i=0;i<d.numPages;i++){
+          const pg = await d.getPage(i+1), vp = pg.getViewport({scale:1});
+          items.push({id:uid(), src:s.id, idx:i, rot:0, ann:[], w:vp.width, h:vp.height}); added++;
+        }
+      } else {
+        const im = await imgOf(s); const land = (im.width||im.naturalWidth) > (im.height||im.naturalHeight);
+        items.push({id:uid(), src:s.id, idx:0, rot:0, ann:[], w:land?A4.h:A4.w, h:land?A4.w:A4.h}); added++;
+      }
+      sources.set(s.id, s); await DB.putSource(s);
+    }catch(e){ failed.push(`${f.name} (${e.message})`); }
+  }
+  busy(false); changed(); render();
+  if (failed.length) toast(`Gagal dibuka: ${failed.join(', ')}`, 5000);
+  else toast(`${added} halaman ditambahkan`);
+}
+
+/* Hasil scan dari tab Scan (database yang sama di perangkat) */
+function readScans(){
+  return new Promise(res=>{ try{
+    const r=indexedDB.open('pindaidok',1);
+    r.onupgradeneeded=()=>r.result.createObjectStore('pages',{keyPath:'id'});
+    r.onsuccess=()=>{ const db=r.result; try{ const q=db.transaction('pages').objectStore('pages').getAll(); q.onsuccess=()=>{ let order=[]; try{ order=JSON.parse(localStorage.getItem('pd_order')||'[]'); }catch(e){}
+        const by=new Map(q.result.map(p=>[p.id,p])), list=order.filter(id=>by.has(id)).map(id=>by.get(id)); q.result.forEach(p=>{ if(!order.includes(p.id)) list.push(p); });
+        res(list.filter(p=>p.out)); db.close(); }; q.onerror=()=>{res([]);db.close();}; }catch(e){ res([]); db.close(); } };
+    r.onerror=()=>res([]);
+  }catch(e){ res([]); } });
+}
+async function refreshScanLabel(){ const n=(await readScans()).length; $('scanLbl').textContent = n ? `Ambil hasil scan (${n})` : 'Ambil hasil scan'; $('btnScan').disabled = !n; }
+$('btnScan').onclick = async ()=>{
+  const list = await readScans(); if (!list.length){ toast('Belum ada hasil scan di tab Scan'); return; }
+  const files = list.map((p,i)=>new File([p.out], `Scan ${i+1}.jpg`, {type:'image/jpeg'}));
+  await addFiles(files);
+};
+
+/* ====== Daftar halaman ====== */
+const ICON = {
+  left:'<svg class="i" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
+  right:'<svg class="i" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  rot:'<svg class="i" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 1-2.3-5.7L20 8M20 3v5h-5"/></svg>',
+  del:'<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+  check:'<svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px;stroke-width:3"><path d="M5 12l5 5 9-10"/></svg>'
+};
+function srcLabel(it){ const s=sources.get(it.src); if (!s) return ''; return s.kind==='pdf' ? `${s.name} · hal ${it.idx+1}` : s.name; }
+function render(){
+  const g=$('grid'); g.innerHTML='';
+  items.forEach((it,i)=>{
+    const li=document.createElement('li'); li.className='card'+(selected.has(it.id)?' sel':''); li.dataset.id=it.id;
+    const th=thumbs.get(it.id);
+    li.innerHTML=`<div class="thumb"><img alt="" ${th&&th.key===thumbKey(it)?`src="${th.url}"`:''}><span class="no">${i+1}</span>
+        ${it.ann.length?`<span class="badge">${it.ann.length} isian</span>`:''}
+        <button class="pick" aria-label="Pilih halaman ${i+1}"><span>${selected.has(it.id)?ICON.check:''}</span></button></div>
+      <div class="src">${escapeHtml(srcLabel(it))}</div>
+      <div class="tools">
+        <button data-a="l" aria-label="Geser ke kiri" ${i===0?'disabled':''}>${ICON.left}</button>
+        <button data-a="r" aria-label="Geser ke kanan" ${i===items.length-1?'disabled':''}>${ICON.right}</button>
+        <button data-a="o" aria-label="Putar">${ICON.rot}</button>
+        <button data-a="d" aria-label="Hapus halaman">${ICON.del}</button>
+      </div>`;
+    li.querySelector('.thumb').onclick=e=>{ if (e.target.closest('.pick')) return; openEditor(it); };
+    li.querySelector('.pick').onclick=()=>{ selected.has(it.id)?selected.delete(it.id):selected.add(it.id); render(); };
+    li.querySelectorAll('.tools button').forEach(b=>b.onclick=()=>cardAction(b,it));
+    g.appendChild(li);
+  });
+  $('count').textContent = items.length+' halaman';
+  $('empty').hidden = items.length>0;
+  $('btnExport').disabled = !items.length;
+  $('btnClear').hidden = !items.length;
+  for (const id of [...selected]) if (!items.find(x=>x.id===id)) selected.delete(id);
+  $('selbar').hidden = !selected.size; $('selInfo').textContent = `${selected.size} dipilih`;
+  queueThumbs();
+}
+function escapeHtml(s){ return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+async function cardAction(b,it){
+  const i=items.indexOf(it), a=b.dataset.a;
+  if (a==='l'&&i>0){ [items[i-1],items[i]]=[items[i],items[i-1]]; }
+  else if (a==='r'&&i<items.length-1){ [items[i+1],items[i]]=[items[i],items[i+1]]; }
+  else if (a==='o'){ rotateItem(it); }
+  else if (a==='d'){
+    if (!b.classList.contains('armed')){ b.classList.add('armed'); setTimeout(()=>b.classList.remove('armed'),2500); return; }
+    items.splice(i,1); selected.delete(it.id); await gcSources(); toast(`Halaman ${i+1} dihapus`);
+  } else return;
+  changed(); render();
+}
+/* Ukuran kotak teks (pecahan halaman) diukur dengan canvas */
+const measureCtx = document.createElement('canvas').getContext('2d');
+function textBox(o, W, H){
+  const fs=o.fs*H; measureCtx.font=`${fs}px Helvetica, Arial, sans-serif`;
+  const lines=o.text.split('\n'), w=Math.max(...lines.map(l=>measureCtx.measureText(l).width));
+  return {w:w/W, h:lines.length*1.2*fs/H};
+}
+/* Putar halaman 90° searah jarum jam. Isian tetap tegak, posisinya ikut berpindah bersama halaman. */
+function rotateItem(it){
+  const S0=finalSize(it), S1={w:S0.h, h:S0.w};
+  it.ann.forEach(o=>{
+    const b = o.type==='i' ? {w:o.w, h:o.h} : textBox(o, S0.w, S0.h);
+    const pw=b.w*S0.w, ph=b.h*S0.h;                  // ukuran absolut tetap
+    const cx=o.x+b.w/2, cy=o.y+b.h/2;                 // titik tengah lama
+    const ncx=1-cy, ncy=cx;                           // titik tengah setelah diputar
+    if (o.type==='i'){ o.w=pw/S1.w; o.h=ph/S1.h; }
+    else o.fs=o.fs*S0.h/S1.h;
+    o.x=ncx-(pw/S1.w)/2; o.y=ncy-(ph/S1.h)/2;
+  });
+  it.rot=(it.rot+1)%4;
+}
+async function gcSources(){
+  const used=new Set(items.map(x=>x.src));
+  for (const [id,s] of sources) if (!used.has(id)){ if (s.js) s.js.destroy(); sources.delete(id); await DB.delSource(id); }
+}
+$('selAll').onclick=()=>{ items.forEach(x=>selected.add(x.id)); render(); };
+$('selNone').onclick=()=>{ selected.clear(); render(); };
+$('selRot').onclick=()=>{ items.filter(x=>selected.has(x.id)).forEach(rotateItem); changed(); render(); };
+$('selDel').onclick=async(e)=>{
+  const b=e.currentTarget;
+  if (!b.classList.contains('armed')){ b.classList.add('armed'); b.textContent=`Yakin hapus ${selected.size}?`; setTimeout(()=>{ b.classList.remove('armed'); b.textContent='Hapus'; },3000); return; }
+  b.classList.remove('armed'); b.textContent='Hapus';
+  const n=selected.size; items=items.filter(x=>!selected.has(x.id)); selected.clear(); await gcSources(); changed(); render(); toast(`${n} halaman dihapus`);
+};
+$('btnClear').onclick=async(e)=>{
+  const b=e.currentTarget;
+  if (!b.classList.contains('warn')){ b.classList.add('warn'); b.textContent='Ketuk lagi untuk mengosongkan'; setTimeout(()=>{ b.classList.remove('warn'); b.textContent='Kosongkan'; },3000); return; }
+  b.classList.remove('warn'); b.textContent='Kosongkan';
+  sources.forEach(s=>s.js&&s.js.destroy()); sources.clear(); items=[]; selected.clear(); thumbs.forEach(t=>URL.revokeObjectURL(t.url)); thumbs.clear();
+  await DB.clear(); changed(); render(); toast('Ruang kerja dikosongkan');
+};
+
+/* ====== Render halaman (tampilan) ====== */
+async function renderItem(it, targetW, withAnn){
+  const s=sources.get(it.src), S=finalSize(it), scale=targetW/S.w;
+  let c;
+  if (s.kind==='pdf'){
+    const d=await jsDoc(s), pg=await d.getPage(it.idx+1);
+    const vp=pg.getViewport({scale, rotation:(pg.rotate+it.rot*90)%360});
+    c=canvas(vp.width, vp.height); const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height);
+    await pg.render({canvasContext:x, viewport:vp}).promise;
+  } else {
+    const im=await imgOf(s), iw=im.width||im.naturalWidth, ih=im.height||im.naturalHeight;
+    const bw=it.w*scale, bh=it.h*scale, base=canvas(bw,bh), bx=base.getContext('2d');
+    bx.fillStyle='#fff'; bx.fillRect(0,0,base.width,base.height);
+    const k=Math.min(base.width/iw, base.height/ih); bx.imageSmoothingQuality='high';
+    bx.drawImage(im,(base.width-iw*k)/2,(base.height-ih*k)/2,iw*k,ih*k);
+    c=rotateCanvas(base, it.rot);
+  }
+  if (withAnn && it.ann.length) await drawAnnToCanvas(c, it.ann);
+  return c;
+}
+function rotateCanvas(src, r){
+  r=((r%4)+4)%4; if (!r) return src;
+  const c=r%2?canvas(src.height,src.width):canvas(src.width,src.height), x=c.getContext('2d');
+  x.translate(c.width/2,c.height/2); x.rotate(r*Math.PI/2); x.drawImage(src,-src.width/2,-src.height/2); return c;
+}
+async function drawAnnToCanvas(c, ann){
+  const x=c.getContext('2d'), W=c.width, H=c.height;
+  for (const o of ann){
+    if (o.type==='t'){
+      const fs=o.fs*H; x.fillStyle=o.color; x.font=`${fs}px Helvetica, Arial, sans-serif`; x.textBaseline='alphabetic';
+      o.text.split('\n').forEach((ln,i)=>x.fillText(ln, o.x*W, o.y*H+(i*1.2+0.947)*fs));
+    } else {
+      const im=await loadImage(new Blob([dataURLToBytes(o.data)],{type:'image/png'}));
+      x.drawImage(im, o.x*W, o.y*H, o.w*W, o.h*H);
+    }
+  }
+}
+const thumbKey = it => it.rot + ':' + hashStr(JSON.stringify(it.ann));
+function hashStr(s){ let h=0; for (let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h+'/'+s.length; }
+let thumbBusy=false;
+async function queueThumbs(){
+  if (thumbBusy) return; thumbBusy=true;
+  try{
+    for (let guard=0; guard<5000; guard++){
+      const it=items.find(x=>{ const t=thumbs.get(x.id); return !t || t.key!==thumbKey(x); });
+      if (!it) break;
+      const key=thumbKey(it);
+      try{
+        const c=await renderItem(it, 280, true), b=await toBlob(c,'image/jpeg',0.8);
+        const old=thumbs.get(it.id); if (old) URL.revokeObjectURL(old.url);
+        const url=URL.createObjectURL(b); thumbs.set(it.id,{key,url});
+        const img=document.querySelector(`.card[data-id="${it.id}"] .thumb img`); if (img) img.src=url;
+      }catch(e){ console.warn(e); thumbs.set(it.id,{key,url:''}); }
+      await tick();
+    }
+  } finally { thumbBusy=false; }
+}
+
+/* ====== Editor isian (teks, tanda tangan, gambar) ====== */
+const ed={it:null, ann:null, sel:null, scale:1, W:0, H:0};
+async function openEditor(it){
+  ed.it=it; ed.ann=JSON.parse(JSON.stringify(it.ann)); ed.sel=null;
+  $('toast').hidden=true; $('edTitle').textContent=`Halaman ${items.indexOf(it)+1}`;
+  $('editor').hidden=false; document.body.style.overflow='hidden';
+  await layoutEditor(true);
+}
+function closeEditor(){ $('editor').hidden=true; document.body.style.overflow=''; ed.it=null; $('layer').innerHTML=''; }
+async function layoutEditor(redraw){
+  if (!ed.it) return;
+  const st=$('stage').getBoundingClientRect(), S=finalSize(ed.it), pad=14;
+  const k=Math.min((st.width-pad*2)/S.w, (st.height-pad*2)/S.h);
+  const W=S.w*k, H=S.h*k; ed.W=W; ed.H=H;
+  const p=$('paper'); p.style.width=W+'px'; p.style.height=H+'px'; p.style.left=(st.width-W)/2+'px'; p.style.top=(st.height-H)/2+'px';
+  if (redraw){
+    busy(true,'Membuka halaman…');
+    try{
+      const dpr=Math.min(2.5, window.devicePixelRatio||1), c=await renderItem(ed.it, W*dpr, false), pc=$('pcv');
+      pc.width=c.width; pc.height=c.height; pc.getContext('2d').drawImage(c,0,0);
+    } finally { busy(false); }
+  }
+  drawObjects();
+}
+window.addEventListener('resize', ()=>{ if (ed.it) layoutEditor(false); });
+function drawObjects(){
+  const L=$('layer'); L.innerHTML='';
+  ed.ann.forEach(o=>{
+    const d=document.createElement('div'); d.className='obj'+(o.type==='t'?' t':'')+(ed.sel===o.id?' on':''); d.dataset.id=o.id;
+    d.style.left=o.x*ed.W+'px'; d.style.top=o.y*ed.H+'px';
+    if (o.type==='t'){ d.textContent=o.text; d.style.fontSize=o.fs*ed.H+'px'; d.style.color=o.color; }
+    else { d.style.width=o.w*ed.W+'px'; d.style.height=o.h*ed.H+'px'; const im=document.createElement('img'); im.src=o.data; im.alt=''; d.appendChild(im); }
+    const rz=document.createElement('div'); rz.className='rz'; d.appendChild(rz);
+    L.appendChild(d);
+    if (o.type==='t'){ o.bw=d.offsetWidth/ed.W; o.bh=d.offsetHeight/ed.H; }
+  });
+  const s=ed.ann.find(o=>o.id===ed.sel);
+  $('tEdit').hidden = !(s && s.type==='t'); $('tDel').hidden = !s;
+}
+let drag=null;
+$('layer').addEventListener('pointerdown', e=>{
+  const el=e.target.closest('.obj');
+  if (!el){ ed.sel=null; drawObjects(); return; }
+  const o=ed.ann.find(a=>a.id===el.dataset.id); ed.sel=o.id;
+  drag={o, mode:e.target.classList.contains('rz')?'rz':'mv', sx:e.clientX, sy:e.clientY, o0:{...o}};
+  $('layer').setPointerCapture(e.pointerId); drawObjects(); e.preventDefault();
+});
+$('layer').addEventListener('pointermove', e=>{
+  if (!drag) return;
+  const o=drag.o, dx=(e.clientX-drag.sx)/ed.W, dy=(e.clientY-drag.sy)/ed.H;
+  if (drag.mode==='mv'){ o.x=Math.min(0.98,Math.max(-0.1,drag.o0.x+dx)); o.y=Math.min(0.98,Math.max(-0.05,drag.o0.y+dy)); }
+  else if (o.type==='t'){ const base=drag.o0.bh||drag.o0.fs*1.2; const f=Math.max(0.3,(base+dy)/base); o.fs=Math.min(0.2,Math.max(0.005,drag.o0.fs*f)); }
+  else { const f=Math.max(0.1,(drag.o0.w+dx)/drag.o0.w); o.w=Math.min(1.2,drag.o0.w*f); o.h=drag.o0.h*(o.w/drag.o0.w); }
+  const el=$('layer').querySelector(`[data-id="${o.id}"]`);
+  el.style.left=o.x*ed.W+'px'; el.style.top=o.y*ed.H+'px';
+  if (o.type==='t') el.style.fontSize=o.fs*ed.H+'px'; else { el.style.width=o.w*ed.W+'px'; el.style.height=o.h*ed.H+'px'; }
+});
+const endDrag=()=>{ if (drag){ drag=null; drawObjects(); } };
+$('layer').addEventListener('pointerup', endDrag); $('layer').addEventListener('pointercancel', endDrag);
+
+$('edCancel').onclick=closeEditor;
+$('edDone').onclick=()=>{ ed.ann.forEach(o=>{ delete o.bw; delete o.bh; }); ed.it.ann=ed.ann; changed(); closeEditor(); render(); };
+$('tDel').onclick=()=>{ ed.ann=ed.ann.filter(o=>o.id!==ed.sel); ed.sel=null; drawObjects(); };
+function addObject(o){ ed.ann.push(o); ed.sel=o.id; drawObjects(); }
+
+/* Teks */
+let tx={editing:null, fs:0.0155, color:'#111111'};
+function openText(o){
+  tx.editing=o||null; $('txTitle').textContent=o?'Ubah teks':'Tambah teks';
+  $('txVal').value=o?o.text:''; tx.fs=o?o.fs:LS.get('fs',0.0155); tx.color=o?o.color:LS.get('color','#111111');
+  syncText(); $('textSheet').hidden=false; setTimeout(()=>$('txVal').focus(),50);
+}
+function syncText(){
+  document.querySelectorAll('#txSize button').forEach(b=>b.setAttribute('aria-pressed', Math.abs(+b.dataset.v-tx.fs)<1e-6));
+  document.querySelectorAll('#txColor button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===tx.color));
+}
+document.querySelectorAll('#txSize button').forEach(b=>b.onclick=()=>{ tx.fs=+b.dataset.v; syncText(); });
+document.querySelectorAll('#txColor button').forEach(b=>b.onclick=()=>{ tx.color=b.dataset.v; syncText(); });
+$('txDate').onclick=()=>{ const t=$('txVal'), v=todayText(), p=t.selectionStart??t.value.length; t.value=t.value.slice(0,p)+v+t.value.slice(t.selectionEnd??p); t.focus(); };
+$('txCancel').onclick=()=>$('textSheet').hidden=true;
+$('txOk').onclick=()=>{
+  const v=$('txVal').value.replace(/\s+$/,''); if (!v){ toast('Teks masih kosong'); return; }
+  LS.set('fs',tx.fs); LS.set('color',tx.color);
+  if (tx.editing){ Object.assign(tx.editing,{text:v, fs:tx.fs, color:tx.color}); drawObjects(); }
+  else addObject({id:uid(), type:'t', x:0.1, y:0.45, fs:tx.fs, color:tx.color, text:v});
+  $('textSheet').hidden=true;
+};
+$('tText').onclick=()=>openText(null);
+$('tEdit').onclick=()=>{ const o=ed.ann.find(a=>a.id===ed.sel); if (o) openText(o); };
+
+/* Tanda tangan */
+const pad={c:$('sgPad'), ctx:null, drawing:false, pts:[], color:'#111111', dirty:false};
+function openSig(){
+  const saved=LS.get('sigs',[]); $('sgSavedWrap').hidden=!saved.length; const box=$('sgSaved'); box.innerHTML='';
+  saved.forEach((d,i)=>{ const b=document.createElement('button'); b.innerHTML=`<img alt="Tanda tangan ${i+1}" src="${d}">`; b.onclick=()=>{ useImage(d); $('sigSheet').hidden=true; }; box.appendChild(b); });
+  $('sigSheet').hidden=false; requestAnimationFrame(()=>{ sizePad(); clearPad(); });
+  pad.color=LS.get('sigColor','#111111'); syncSigColor();
+}
+function syncSigColor(){ document.querySelectorAll('#sgColor button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===pad.color)); }
+document.querySelectorAll('#sgColor button').forEach(b=>b.onclick=()=>{ pad.color=b.dataset.v; LS.set('sigColor',pad.color); syncSigColor(); });
+function sizePad(){ const r=pad.c.getBoundingClientRect(), d=Math.min(3,window.devicePixelRatio||1); pad.c.width=Math.round(r.width*d); pad.c.height=Math.round(r.height*d); pad.ctx=pad.c.getContext('2d'); pad.ctx.setTransform(d,0,0,d,0,0); pad.ctx.lineCap='round'; pad.ctx.lineJoin='round'; }
+function clearPad(){ pad.ctx.clearRect(0,0,pad.c.width,pad.c.height); pad.dirty=false; }
+function padPt(e){ const r=pad.c.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+pad.c.addEventListener('pointerdown', e=>{ pad.drawing=true; pad.pts=[padPt(e)]; pad.c.setPointerCapture(e.pointerId); const p=pad.pts[0]; pad.ctx.fillStyle=pad.color; pad.ctx.beginPath(); pad.ctx.arc(p.x,p.y,1.4,0,Math.PI*2); pad.ctx.fill(); pad.dirty=true; });
+pad.c.addEventListener('pointermove', e=>{
+  if (!pad.drawing) return; const p=padPt(e), P=pad.pts; P.push(p); if (P.length<3) return;
+  const a=P[P.length-3], b=P[P.length-2], m1={x:(a.x+b.x)/2,y:(a.y+b.y)/2}, m2={x:(b.x+p.x)/2,y:(b.y+p.y)/2};
+  pad.ctx.strokeStyle=pad.color; pad.ctx.lineWidth=2.8; pad.ctx.beginPath(); pad.ctx.moveTo(m1.x,m1.y); pad.ctx.quadraticCurveTo(b.x,b.y,m2.x,m2.y); pad.ctx.stroke();
+});
+const padEnd=()=>{ pad.drawing=false; }; pad.c.addEventListener('pointerup',padEnd); pad.c.addEventListener('pointercancel',padEnd);
+function trimCanvas(c){
+  const x=c.getContext('2d'), d=x.getImageData(0,0,c.width,c.height).data; let t=c.height,l=c.width,r=-1,b=-1;
+  for (let y=0;y<c.height;y++) for (let xx=0;xx<c.width;xx++) if (d[(y*c.width+xx)*4+3]>10){ if(y<t)t=y; if(y>b)b=y; if(xx<l)l=xx; if(xx>r)r=xx; }
+  if (r<0) return null; const p=6; l=Math.max(0,l-p); t=Math.max(0,t-p); r=Math.min(c.width-1,r+p); b=Math.min(c.height-1,b+p);
+  const o=canvas(r-l+1,b-t+1); o.getContext('2d').drawImage(c,l,t,o.width,o.height,0,0,o.width,o.height); return o;
+}
+$('sgClear').onclick=clearPad;
+$('sgCancel').onclick=()=>$('sigSheet').hidden=true;
+$('sgOk').onclick=()=>{
+  if (!pad.dirty){ toast('Tanda tangan masih kosong'); return; }
+  const t=trimCanvas(pad.c); if (!t){ toast('Tanda tangan masih kosong'); return; }
+  const d=t.toDataURL('image/png'); const s=LS.get('sigs',[]).filter(x=>x!==d); s.unshift(d); LS.set('sigs', s.slice(0,4));
+  useImage(d); $('sigSheet').hidden=true;
+};
+$('tSig').onclick=openSig;
+async function useImage(dataURL){
+  const im=await loadImage(new Blob([dataURLToBytes(dataURL)],{type:'image/png'}));
+  const iw=im.width||im.naturalWidth, ih=im.height||im.naturalHeight;
+  const w=0.3, h=w*ed.W/ed.H*ih/iw;
+  addObject({id:uid(), type:'i', x:0.55, y:0.72, w, h, data:dataURL});
+}
+/* Gambar / stempel: dikecilkan & dijadikan PNG */
+$('tImg').onclick=()=>$('inImg').click();
+$('inImg').onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=''; if (!f) return;
+  try{
+    const im=await loadImage(f), iw=im.width||im.naturalWidth, ih=im.height||im.naturalHeight, k=Math.min(1,900/Math.max(iw,ih));
+    const c=canvas(iw*k,ih*k); c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+    await useImage(c.toDataURL('image/png'));
+  }catch(err){ toast('Gambar tidak bisa dibuka'); }
+};
+
+/* ====== Membuat PDF ======
+   Halaman tanpa isian disalin utuh (teks, tautan, kualitas asli tetap). Halaman dengan isian
+   ditempel sebagai halaman tertanam lalu isian digambar di atasnya. */
+function mapPt(R, w0, h0, u, v){ return R===90?[v,w0-u] : R===180?[w0-u,h0-v] : R===270?[h0-v,u] : [u,v]; }
+function hexRgb(h){ return rgb(parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255); }
+function winAnsiSafe(font, s){ let o=''; for (const ch of s){ try{ font.encodeText(ch); o+=ch; }catch(e){ o+= ch==='’'||ch==='‘' ? "'" : '?'; } } return o; }
+async function drawAnn(out, page, ann, font){
+  const W=page.getWidth(), H=page.getHeight();
+  for (const o of ann){
+    if (o.type==='t'){
+      const size=o.fs*H;
+      o.text.split('\n').forEach((ln,i)=>{ if (!ln) return; page.drawText(winAnsiSafe(font,ln), {x:o.x*W, y:H-(o.y*H+(i*1.2+0.947)*size), size, font, color:hexRgb(o.color)}); });
+    } else {
+      const img=await out.embedPng(dataURLToBytes(o.data));
+      page.drawImage(img, {x:o.x*W, y:H-(o.y+o.h)*H, width:o.w*W, height:o.h*H});
+    }
+  }
+}
+async function buildPdf(list, onProg){
+  const out=await PDFDocument.create(); let font=null;
+  for (let n=0;n<list.length;n++){
+    onProg&&onProg(n,list.length);
+    const it=list[n], s=sources.get(it.src);
+    if (s.kind==='pdf'){
+      const lib=await libDoc(s), sp=lib.getPage(it.idx), R=((sp.getRotation().angle||0)+it.rot*90)%360;
+      if (!it.ann.length){
+        const [p]=await out.copyPages(lib,[it.idx]); p.setRotation(degrees(R)); out.addPage(p);
+      } else {
+        const cb=sp.getCropBox(), w0=cb.width, h0=cb.height;
+        const emb=await out.embedPage(sp, {left:cb.x, bottom:cb.y, right:cb.x+cb.width, top:cb.y+cb.height});
+        const p=out.addPage(R%180?[h0,w0]:[w0,h0]); const [x,y]=mapPt(R,w0,h0,0,0);
+        p.drawPage(emb,{x,y,width:w0,height:h0,rotate:degrees(-R)});
+        if (!font) font=await out.embedFont(StandardFonts.Helvetica);
+        await drawAnn(out,p,it.ann,font);
+      }
+    } else {
+      const R=it.rot*90, w0=it.w, h0=it.h, p=out.addPage(R%180?[h0,w0]:[w0,h0]);
+      const bytes=new Uint8Array(await s.blob.arrayBuffer());
+      let img; const t=(s.blob.type||'');
+      if (/png/.test(t)) img=await out.embedPng(bytes);
+      else if (/jpe?g/.test(t) || (bytes[0]===0xFF&&bytes[1]===0xD8)) img=await out.embedJpg(bytes);
+      else { const im=await imgOf(s), c=canvas(im.width||im.naturalWidth, im.height||im.naturalHeight); const cx=c.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,c.width,c.height); cx.drawImage(im,0,0); img=await out.embedJpg(new Uint8Array(await (await toBlob(c,'image/jpeg',0.9)).arrayBuffer())); }
+      const k=Math.min(w0/img.width, h0/img.height), iw=img.width*k, ih=img.height*k, bx=(w0-iw)/2, by=(h0-ih)/2;
+      const [x,y]=mapPt(R,w0,h0,bx,by);
+      p.drawImage(img,{x,y,width:iw,height:ih,rotate:degrees(-R)});
+      if (it.ann.length){ if (!font) font=await out.embedFont(StandardFonts.Helvetica); await drawAnn(out,p,it.ann,font); }
+    }
+  }
+  out.setProducer('PindaiDok'); out.setCreator('PindaiDok');
+  return await out.save();
+}
+/* PDF jadi gambar (kompres) */
+async function rasterPdf(bytes, qk, onProg){
+  const Q=QUALITY[qk], d=await pdfjsLib.getDocument({data:bytes.slice(0), isEvalSupported:false}).promise, out=await PDFDocument.create();
+  try{
+    for (let i=1;i<=d.numPages;i++){
+      onProg&&onProg(i-1,d.numPages);
+      const pg=await d.getPage(i), vp1=pg.getViewport({scale:1}), sc=Q.side/Math.max(vp1.width,vp1.height), vp=pg.getViewport({scale:sc});
+      const c=canvas(vp.width,vp.height), x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height);
+      await pg.render({canvasContext:x, viewport:vp}).promise;
+      const img=await out.embedJpg(new Uint8Array(await (await toBlob(c,'image/jpeg',Q.q)).arrayBuffer()));
+      const p=out.addPage([vp1.width,vp1.height]); p.drawImage(img,{x:0,y:0,width:vp1.width,height:vp1.height});
+      await tick();
+    }
+  } finally { d.destroy(); }
+  out.setProducer('PindaiDok');
+  return await out.save();
+}
+async function splitPdf(bytes){
+  const src=await PDFDocument.load(bytes), res=[];
+  for (let i=0;i<src.getPageCount();i++){ const o=await PDFDocument.create(); const [p]=await o.copyPages(src,[i]); o.addPage(p); res.push(await o.save()); }
+  return res;
+}
+
+/* ====== PDF ke Word ====== */
+let docxReady=null, tessReady=null, ocrWorker=null;
+function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Gagal memuat '+src)); document.head.appendChild(s); }); }
+function needDocx(){ return docxReady || (docxReady = loadScript('vendor/docx.umd.js').catch(e=>{ docxReady=null; throw e; })); }
+async function needOcr(){
+  if (ocrWorker) return ocrWorker;
+  if (!tessReady) tessReady = loadScript('vendor/tess/tesseract.min.js').catch(e=>{ tessReady=null; throw e; });
+  await tessReady;
+  const base=new URL('vendor/tess/', location.href).href;
+  ocrWorker = await Tesseract.createWorker('ind', 1, { workerPath:base+'worker.min.js', corePath:base+'core', langPath:base+'lang', gzip:false, cacheMethod:'none', workerBlobURL:false });
+  return ocrWorker;
+}
+let stopFlag=false;
+$('busyStop').onclick=()=>{ stopFlag=true; $('busyText').textContent='Menghentikan…'; };
+
+/* Mengelompokkan potongan teks pdf.js menjadi baris dan paragraf */
+function textToParagraphs(tc, vp){
+  const pieces=[];
+  for (const t of tc.items){
+    if (!t.str || !t.str.trim()) { if (t.str===' ' && pieces.length) pieces[pieces.length-1].str+=' '; continue; }
+    const m=pdfjsLib.Util.transform(vp.transform, t.transform);
+    const fs=Math.hypot(m[2],m[3]) || Math.abs(t.height) || 10;
+    pieces.push({str:t.str, x:m[4], y:m[5], w:t.width*vp.scale, fs, bold:/bold|black|heavy/i.test((tc.styles[t.fontName]||{}).fontFamily||'')||/bold/i.test(t.fontName)});
+  }
+  pieces.sort((a,b)=>Math.abs(a.y-b.y)<Math.min(a.fs,b.fs)*0.5 ? a.x-b.x : a.y-b.y);
+  const lines=[];
+  for (const p of pieces){
+    const L=lines[lines.length-1];
+    if (L && Math.abs(L.y-p.y)<Math.min(L.fs,p.fs)*0.5){
+      const gap=p.x-(L.x1);
+      if (gap>L.fs*2) L.text=L.text.replace(/\s+$/,'')+'\t';
+      else if (gap>L.fs*0.15 && !/\s$/.test(L.text) && !/^\s/.test(p.str)) L.text+=' ';
+      L.text+=p.str; L.x1=Math.max(L.x1,p.x+p.w); L.fs=Math.max(L.fs,p.fs); L.bold=L.bold&&p.bold;
+    } else lines.push({text:p.str, x0:p.x, x1:p.x+p.w, y:p.y, fs:p.fs, bold:p.bold});
+  }
+  const paras=[], W=vp.width;
+  for (const L of lines){
+    const P=paras[paras.length-1];
+    const center=Math.abs((L.x0+L.x1)/2-W/2)<W*0.04 && (L.x1-L.x0)<W*0.7;
+    if (P && !P.center && !center && Math.abs(P.fs-L.fs)<1 && (L.y-P.lastY)<L.fs*1.7 && Math.abs(L.x0-P.x0)<L.fs*3){
+      P.text += (/-$/.test(P.text)?'':' ') + L.text.trim(); P.lastY=L.y;
+    } else paras.push({text:L.text.trim(), x0:L.x0, fs:L.fs, bold:L.bold, center, lastY:L.y, gapBefore: P ? L.y-P.lastY : 0});
+  }
+  return paras;
+}
+async function buildWord(bytes, mode, ocr, onProg){
+  await needDocx();
+  const D=window.docx, d=await pdfjsLib.getDocument({data:bytes.slice(0), isEvalSupported:false}).promise;
+  const sections=[]; let ocrPages=0, emptyPages=0;
+  try{
+    for (let i=1;i<=d.numPages;i++){
+      if (stopFlag) throw new Error('Dihentikan');
+      onProg&&onProg(i-1,d.numPages);
+      const pg=await d.getPage(i), vp=pg.getViewport({scale:1});
+      // docx menukar lebar/tinggi sendiri untuk LANDSCAPE, jadi ukuran selalu diberikan dalam bentuk tegak
+      const pageProps={ size:{ width:Math.round(Math.min(vp.width,vp.height)*20), height:Math.round(Math.max(vp.width,vp.height)*20), orientation: vp.width>vp.height?D.PageOrientation.LANDSCAPE:D.PageOrientation.PORTRAIT } };
+      if (mode==='persis'){
+        const sc=1654/Math.max(vp.width,vp.height), v2=pg.getViewport({scale:sc}), c=canvas(v2.width,v2.height), x=c.getContext('2d');
+        x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); await pg.render({canvasContext:x, viewport:v2}).promise;
+        const data=await (await toBlob(c,'image/jpeg',0.82)).arrayBuffer();
+        const pw=vp.width*96/72, ph=vp.height*96/72 - 4;
+        sections.push({ properties:{ page:{ ...pageProps, margin:{top:0,right:0,bottom:0,left:0,header:0,footer:0} } },
+          children:[ new D.Paragraph({ spacing:{before:0,after:0}, children:[ new D.ImageRun({ data, transformation:{ width:Math.floor(pw*(ph/(vp.height*96/72))), height:Math.floor(ph) } }) ] }) ] });
+        continue;
+      }
+      const tc=await pg.getTextContent();
+      let paras=textToParagraphs(tc, vp);
+      let fromOcr=false;
+      if (paras.map(p=>p.text).join('').replace(/\s/g,'').length<20){
+        if (ocr){
+          busy(true, `Membaca teks halaman ${i}/${d.numPages} (OCR)…`, true);
+          const w=await needOcr();
+          const sc=2000/Math.max(vp.width,vp.height), v2=pg.getViewport({scale:sc}), c=canvas(v2.width,v2.height), x=c.getContext('2d');
+          x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); await pg.render({canvasContext:x, viewport:v2}).promise;
+          const r=await w.recognize(c);
+          paras=(r.data.text||'').split(/\n\s*\n/).map(t=>t.replace(/\s*\n\s*/g,' ').trim()).filter(Boolean).map(t=>({text:t, fs:11, bold:false, center:false, gapBefore:12}));
+          fromOcr=true; ocrPages++;
+        } else { emptyPages++; paras=[]; }
+      }
+      const body=paras.length ? paras.map(p=>{
+        const sizePt=Math.max(8, Math.min(28, Math.round(p.fs*2)/2));
+        const kids=[]; p.text.split('\t').forEach((t,k)=>{ if (k) kids.push(new D.Tab()); kids.push(t); });
+        const runs=[ new D.TextRun({children:kids, size:Math.round(sizePt*2), bold:p.bold||sizePt>=15, font:'Arial'}) ];
+        return new D.Paragraph({ children:runs, alignment:p.center?D.AlignmentType.CENTER:D.AlignmentType.LEFT,
+          spacing:{ before: fromOcr?0:Math.min(400,Math.max(0,Math.round((p.gapBefore-p.fs*1.25)*20))), after: fromOcr?160:0 },
+          indent: (!fromOcr && !p.center && p.x0>72*1.6) ? {left:Math.round((p.x0-72)*20)} : undefined });
+      }) : [ new D.Paragraph({ children:[ new D.TextRun({ text: ocr ? '(Halaman ini tidak berisi teks yang terbaca.)' : '(Halaman ini berupa gambar. Centang OCR untuk membaca teksnya.)', italics:true, color:'888888' }) ] }) ];
+      sections.push({ properties:{ page:{ ...pageProps, margin:{top:1134,right:1134,bottom:1134,left:1134} } }, children: body });
+      await tick();
+    }
+  } finally { d.destroy(); }
+  const doc=new D.Document({ creator:'PindaiDok', styles:{ default:{ document:{ run:{ font:'Arial', size:22 } } } }, sections });
+  const blob=await D.Packer.toBlob(doc);
+  return {blob, ocrPages, emptyPages};
+}
+
+/* ====== Ekspor ====== */
+let exOpt=LS.get('export',{range:'all', kind:'pdf', q:'asli', wmode:'teks', ocr:true});
+let exSession=0, sizeToken=0;
+const cache=new Map(); // kunci → promise
+function rangeItems(){ return exOpt.range==='sel' && selected.size ? items.filter(x=>selected.has(x.id)) : items; }
+function memo(key, fn){ if (!cache.has(key)){ const p=fn(); cache.set(key,p); p.catch(()=>cache.delete(key)); } return cache.get(key); }
+function baseKey(){ return `${rev}|${exOpt.range}|${exOpt.range==='sel'?[...selected].join(','):''}`; }
+function getBase(prog){ const list=rangeItems(); return memo('base|'+baseKey(), ()=>buildPdf(list, prog)); }
+function getPdf(qk, prog){
+  if (qk==='asli') return getBase(prog);
+  const sess=exSession;
+  return memo(`r|${qk}|${baseKey()}`, async()=>{ const b=await getBase(prog); if (sess!==exSession) throw new Error('batal'); return rasterPdf(b, qk, prog); });
+}
+async function outputFiles(prog){
+  const name=safeName($('fname').value);
+  if (exOpt.kind==='pdf'){ const b=await getPdf(exOpt.q, prog); return [new File([b], name+'.pdf', {type:'application/pdf'})]; }
+  if (exOpt.kind==='split'){
+    const b=await getPdf(exOpt.q, prog), parts=await memo(`s|${exOpt.q}|${baseKey()}`, ()=>splitPdf(b));
+    return parts.map((p,i)=>new File([p], `${name}_hal${String(i+1).padStart(2,'0')}.pdf`, {type:'application/pdf'}));
+  }
+  const b=await getBase(prog);
+  const r=await memo(`w|${exOpt.wmode}|${exOpt.ocr}|${baseKey()}`, ()=>buildWord(b, exOpt.wmode, exOpt.ocr, prog));
+  outputFiles.last=r;
+  return [new File([r.blob], name+'.docx', {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'})];
+}
+function totalSize(files){ let t=files.reduce((s,f)=>s+f.size,0); if (files.length>1) t+=files.reduce((s,f)=>s+76+2*f.name.length,0)+22; return t; }
+
+function syncExport(){
+  const nSel=selected.size;
+  if (!nSel && exOpt.range==='sel') exOpt.range='all';
+  $('rAll').textContent=`${items.length} halaman`; $('rSel').textContent= nSel?`${nSel} halaman`:'centang dulu';
+  document.querySelector('#segRange [data-v="sel"]').disabled=!nSel;
+  ['segRange:range','segKind:kind','segQ:q','segW:wmode'].forEach(p=>{ const [id,k]=p.split(':'); document.querySelectorAll(`#${id} button`).forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===exOpt[k])); });
+  $('fQ').hidden = exOpt.kind==='word'; $('fWord').hidden = exOpt.kind!=='word';
+  $('exOcr').checked=!!exOpt.ocr; $('ocrRow').hidden = exOpt.wmode!=='teks';
+  $('exSave').textContent = exOpt.kind==='word' ? 'Buat & unduh' : 'Unduh';
+  LS.set('export', exOpt);
+}
+async function updateSizes(){
+  const my=++sizeToken, n=rangeItems().length;
+  if (exOpt.kind==='word'){
+    $('exSize').innerHTML = exOpt.wmode==='teks'
+      ? `Word berisi teks yang bisa diedit dari <b>${n}</b> halaman.<br><span>Tabel, kolom, dan gambar tidak ikut. Ukuran file tampil setelah dibuat.</span>`
+      : `Setiap halaman jadi gambar di Word, tampilan sama persis, <b>${n}</b> halaman.<br><span>Teks tidak bisa diedit. Ukuran file tampil setelah dibuat.</span>`;
+    return;
+  }
+  document.querySelectorAll('#segQ .sz').forEach(el=>el.textContent='…');
+  $('exSize').textContent='Menghitung ukuran file…';
+  const order=[exOpt.q, ...['asli','kecil','sedang','tinggi'].filter(k=>k!==exOpt.q)];
+  for (const qk of order){
+    let size;
+    try{
+      if (exOpt.kind==='pdf') size=(await getPdf(qk)).length;
+      else { const b=await getPdf(qk), parts=await memo(`s|${qk}|${baseKey()}`, ()=>splitPdf(b)); size=totalSize(parts.map((p,i)=>({size:p.length, name:`x_hal${i}.pdf`}))); }
+    }catch(e){ if (my===sizeToken && qk===exOpt.q) $('exSize').textContent='Ukuran belum bisa dihitung: '+e.message; return; }
+    if (my!==sizeToken) return;
+    document.querySelector(`#segQ [data-v="${qk}"] .sz`).textContent=fmtSize(size);
+    if (qk===exOpt.q){
+      const what = exOpt.kind==='pdf' ? `1 file PDF, ${n} halaman` : `ZIP berisi ${n} file PDF (1 halaman per file)`;
+      $('exSize').innerHTML=`Ukuran file: <b>${fmtSize(size)}</b><br><span>${what}</span>`;
+    }
+  }
+}
+function openExport(){
+  $('toast').hidden=true; exSession++; cache.clear(); sizeToken++;
+  if (!$('fname').value) $('fname').value = LS.get('fname','') || (sources.size===1 ? [...sources.values()][0].name+' (edit)' : 'Gabungan');
+  if (selected.size && exOpt.range!=='sel') exOpt.range='sel';
+  syncExport(); $('exShare').hidden=!(navigator.canShare&&navigator.share); $('exportSheet').hidden=false; updateSizes();
+}
+function closeExport(){ $('exportSheet').hidden=true; exSession++; sizeToken++; cache.clear(); }
+$('btnExport').onclick=openExport;
+$('exCancel').onclick=closeExport;
+$('exportSheet').addEventListener('click', e=>{ if (e.target.id==='exportSheet') closeExport(); });
+['segRange:range','segKind:kind','segQ:q','segW:wmode'].forEach(p=>{ const [id,k]=p.split(':');
+  document.querySelectorAll(`#${id} button`).forEach(b=>b.onclick=()=>{ if (b.disabled) return; exOpt[k]=b.dataset.v; syncExport(); updateSizes(); }); });
+$('exOcr').onchange=e=>{ exOpt.ocr=e.target.checked; syncExport(); };
+$('fname').onchange=()=>{ $('fname').value=safeName($('fname').value); LS.set('fname',$('fname').value); };
+
+function download(file){ const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000); }
+async function zipFiles(files,name){ const z=new JSZip(); files.forEach(f=>z.file(f.name,f)); const b=await z.generateAsync({type:'blob',compression:'STORE'}); return new File([b],name+'.zip',{type:'application/zip'}); }
+async function prepare(){
+  stopFlag=false;
+  const label = exOpt.kind==='word' ? 'Membuat Word' : exOpt.kind==='split' ? 'Memisah halaman' : 'Menyusun PDF';
+  busy(true, label+'…', exOpt.kind==='word');
+  const files=await outputFiles((i,n)=>{ if (!$('busy').hidden && !/OCR/.test($('busyText').textContent)) $('busyText').textContent=`${label}… ${i+1}/${n}`; });
+  return files;
+}
+function afterWordToast(f){
+  const r=outputFiles.last||{}; let extra='';
+  if (r.ocrPages) extra+=` ${r.ocrPages} halaman dibaca dengan OCR, periksa ejaannya.`;
+  if (r.emptyPages) extra+=` ${r.emptyPages} halaman berupa gambar tanpa teks.`;
+  toast(`Tersimpan: ${f.name} (${fmtSize(f.size)}).${extra}`, 6000);
+}
+$('exSave').onclick=async()=>{
+  try{
+    let files=await prepare();
+    if (files.length>1){ busy(true,'Mengemas ZIP…'); files=[await zipFiles(files, safeName($('fname').value))]; }
+    busy(false); download(files[0]);
+    if (exOpt.kind==='word') afterWordToast(files[0]); else toast(`Tersimpan: ${files[0].name} (${fmtSize(files[0].size)})`, 4000);
+    closeExport();
+  }catch(e){ busy(false); toast(e.message==='Dihentikan' ? 'Pembuatan Word dihentikan' : 'Ekspor gagal: '+e.message, 5000); }
+};
+$('exShare').onclick=async()=>{
+  try{
+    const files=await prepare(); busy(false);
+    if (navigator.canShare && !navigator.canShare({files})){ toast('Perangkat ini tidak bisa membagikan file ini. Gunakan Unduh.'); return; }
+    await navigator.share({files, title:safeName($('fname').value)}); closeExport();
+  }catch(e){ busy(false); if (e.name!=='AbortError') toast('Gagal: '+e.message, 5000); }
+};
+
+/* ====== Tombol utama & mulai ====== */
+$('btnAdd').onclick=$('btnAdd2').onclick=()=>$('inFile').click();
+$('inFile').onchange=e=>{ const f=e.target.files; addFiles(f).finally(()=>e.target.value=''); };
+
+(async function init(){
+  if (await DB.open()){
+    const srcs=await DB.sources(); srcs.forEach(s=>sources.set(s.id, s));
+    const its=await DB.items(); if (its) items=its.filter(x=>sources.has(x.src));
+  }
+  render(); refreshScanLabel();
+  if ('serviceWorker' in navigator && location.protocol!=='file:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>
